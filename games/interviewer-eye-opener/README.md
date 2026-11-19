@@ -68,6 +68,37 @@ S2 使用尚未点赞的 D。若继续使用 S1 中已经点赞的 A，就测不
 
 S7 以后的 MQ、消费者、Redis、压力和全部重启故障，等 S0—S6 跑通后再加入。
 
+## 跑第一刀
+
+需要 JDK 25、Maven 和正在运行的 Docker。MySQL 不用提前安装，测试会启动固定版本的真实 MySQL 容器。
+
+这台机器上的 JDK 25 没有接管全局 Java 环境。只在当前 PowerShell 里临时切过去：
+
+```powershell
+$env:JAVA_HOME = 'D:\IDEA\JDK25'
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+mvn -f games/interviewer-eye-opener/pom.xml verify
+```
+
+真正通过时，终端会出现：
+
+```text
+S0-S6 / MYSQL_BASELINE / QUALIFIED
+```
+
+同时留下三份可以互相核对的东西：
+
+```text
+games/interviewer-eye-opener/target/qualification/
+├── scenario.json
+├── scenario.sha256
+└── run-report.json
+```
+
+这次 `QUALIFIED` 只说明：冻结的 S0—S6 在报告所写的 Java、MySQL 镜像和运行边界内通过了正确性检查。它不是生产容量结论，也没有证明高并发性能。
+
+另外三个流派仍然是 `NOT_IMPLEMENTED`。先别替它们毕业。
+
 ## 学院派
 
 学院派可以修改课程验收范围，不能修改底层运行结果。
