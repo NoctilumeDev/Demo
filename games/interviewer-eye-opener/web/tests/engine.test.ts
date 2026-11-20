@@ -8,7 +8,9 @@ import {
   createRun,
   retryCurrentIncident,
   toggleAcademicScope,
+  viewCurrentEvidence,
 } from "../src/game/engine";
+import { checkForIncident } from "../src/game/judge";
 import { judgeRun } from "../src/game/judge";
 import type { FactionId } from "../src/game/types";
 import { playDecisions, playWinningRun, WINNING_DECISIONS } from "./helpers";
@@ -52,15 +54,15 @@ describe("game engine", () => {
 
   it("lets the academic score reach 100 without changing a failed business verdict", () => {
     const run = playDecisions("academic", [
-      "count-every-request",
+      "db-unique",
       "transactional-request-record",
       "database-fallback",
-      "measure-and-scale",
+      "reject-everything",
       "sql-business-key",
     ]);
     expect(run.finalVerdict?.status).toBe("FAIL");
 
-    const reopened = { ...run, phase: "REVIEW" as const, incidentIndex: 0, finalVerdict: undefined };
+    const reopened = { ...run, phase: "REVIEW" as const, incidentIndex: 3, finalVerdict: undefined };
     const excluded = toggleAcademicScope(reopened);
     const score = calculateFactionScore(excluded, judgeRun(excluded));
 
@@ -97,5 +99,68 @@ describe("game engine", () => {
     expect(first.attempts.map((attempt) => attempt.observation.facts)).toEqual(
       second.attempts.map((attempt) => attempt.observation.facts),
     );
+  });
+
+  it("lets history change the outcome of the same capacity decision", () => {
+    const clean = playDecisions("simple", [
+      "db-unique",
+      "transactional-request-record",
+      "database-fallback",
+      "measure-and-scale",
+    ]);
+    const dirty = playDecisions("simple", [
+      "redis-idempotency",
+      "async-ack",
+      "ignore-message-loss",
+      "measure-and-scale",
+    ]);
+
+    expect(checkForIncident(clean, "traffic-spike").status).toBe("PASS");
+    expect(checkForIncident(dirty, "traffic-spike").status).toBe("FAIL");
+    expect(clean.attempts.at(-1)?.decisionId).toBe(dirty.attempts.at(-1)?.decisionId);
+    expect(clean.attempts.at(-1)?.observation.facts.effectiveCapacity)
+      .not.toBe(dirty.attempts.at(-1)?.observation.facts.effectiveCapacity);
+  });
+
+  it("uses earlier controls to decide whether reconciliation has an authority source", () => {
+    let evidenced = createRun("simple", 1);
+    evidenced = advanceIncident(applyDecision(evidenced, "db-unique"));
+    evidenced = advanceIncident(applyDecision(evidenced, "transactional-request-record"));
+    evidenced = applyDecision(evidenced, "scheduled-reconciliation");
+
+    let unevidenced = createRun("simple", 2);
+    unevidenced = advanceIncident(applyDecision(unevidenced, "redis-idempotency"));
+    unevidenced = advanceIncident(applyDecision(unevidenced, "blind-retry"));
+    unevidenced = applyDecision(unevidenced, "scheduled-reconciliation");
+
+    expect(checkForIncident(evidenced, "message-outage").status).toBe("PASS");
+    expect(checkForIncident(unevidenced, "message-outage").status).toBe("UNKNOWN");
+  });
+
+  it("records optional evidence views but excludes forced navigation from profiling", () => {
+    let run = createRun("engineering", 1);
+    const initialTime = run.timeRemaining;
+    run = viewCurrentEvidence(run);
+    run = applyDecision(run, "db-unique");
+    run = advanceIncident(run);
+
+    const evidenceEvent = run.behaviorLog.find((event) => event.kind === "VIEW_EVIDENCE");
+    const advanceEvent = run.behaviorLog.find((event) => event.kind === "ADVANCE");
+    expect(evidenceEvent?.observationEligible).toBe(true);
+    expect(evidenceEvent?.signal).toMatchObject({ status: "OBSERVED", dimensions: { E: 1 } });
+    expect(advanceEvent?.observationEligible).toBe(false);
+    expect(run.timeRemaining).toBe(initialTime - 2);
+  });
+
+  it("keeps failed evidence while rolling the simulated world back before a retry", () => {
+    let run = applyDecision(createRun("simple", 1), "count-every-request");
+    expect(run.world.unresolvedFailures).toBe(1);
+    const timeBefore = run.timeRemaining;
+    run = retryCurrentIncident(run);
+
+    expect(run.world.unresolvedFailures).toBe(0);
+    expect(run.timeRemaining).toBe(timeBefore - 1);
+    expect(run.attempts).toHaveLength(1);
+    expect(run.behaviorLog.at(-1)?.kind).toBe("RETRY");
   });
 });

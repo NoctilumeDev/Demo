@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["optionId", "decision", "assumptions", "reasoningSummary"],
+  "properties": {
+    "optionId": { "type": "string", "pattern": "^Q[1-7]-[A-D]$" },
+    "decision": { "enum": ["KEEP", "SKIP"] },
+    "assumptions": { "type": "array", "items": { "type": "string" } },
+    "reasoningSummary": { "type": "string" }
+  }
+}

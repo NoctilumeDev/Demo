@@ -458,6 +458,118 @@ main { width: min(1500px, 100%); margin: 0 auto; }
 .run-table th, .run-table td { padding: 0.9rem 1rem; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
 .run-table th { color: var(--muted); font-size: 0.75rem; }
 
+.quiz-page, .profile-page {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  padding: clamp(2rem, 5vw, 5rem) 4vw 6rem;
+}
+
+.quiz-progress {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.8rem 2rem;
+  margin-bottom: 1rem;
+  color: var(--muted);
+}
+
+.quiz-progress strong { color: var(--paper); }
+.quiz-progress .meter { grid-column: 1 / -1; margin: 0; }
+
+.quiz-card, .profile-card, .profile-challenge, .comparison-evidence {
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: rgba(17, 24, 32, 0.96);
+}
+
+.quiz-card { padding: clamp(1.3rem, 4vw, 3rem); }
+.quiz-card h2 { margin: 0 0 1.4rem; font: 850 clamp(2.2rem, 5vw, 4.8rem)/1 ui-serif, "Songti SC", serif; }
+.quiz-card h3 { margin: 2rem 0 1rem; }
+
+.quiz-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.7rem; }
+.quiz-facts section { padding: 1rem; border: 1px solid #2d3c48; border-radius: 0.45rem; background: #0e151b; }
+.quiz-facts span, .quiz-options button > span { color: var(--amber); font: 800 0.75rem ui-monospace, monospace; }
+.quiz-facts p { margin-bottom: 0; color: #c6d0d7; line-height: 1.65; }
+
+.quiz-options { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.quiz-options button {
+  min-height: 13rem;
+  padding: 1.1rem;
+  border: 1px solid #344452;
+  border-radius: 0.55rem;
+  color: var(--paper);
+  text-align: left;
+  background: #121b23;
+  cursor: pointer;
+}
+.quiz-options button:hover { border-color: var(--amber); transform: translateY(-2px); }
+.quiz-options strong { display: block; margin-bottom: 1rem; line-height: 1.6; }
+.quiz-options ul { margin: 0.5rem 0 0; padding-left: 1.2rem; color: var(--muted); line-height: 1.55; }
+.quiz-lock-note { margin: 1.2rem 0 0; color: var(--muted); font-size: 0.88rem; }
+
+.candidate-stage, .final-choice-stage { margin-top: 1.5rem; }
+.candidate-stage__counter { display: flex; align-items: center; justify-content: space-between; color: var(--muted); }
+.candidate-stage__counter strong { color: var(--paper); font: 850 1.1rem ui-monospace, monospace; }
+.candidate-card {
+  margin-top: 0.8rem;
+  padding: clamp(1.2rem, 3vw, 2rem);
+  border: 1px solid #3b4c5a;
+  border-radius: 0.65rem;
+  background: #0e151b;
+  box-shadow: 0 1.2rem 3rem rgba(0, 0, 0, 0.18);
+}
+.candidate-card h3 { margin: 0 0 1.2rem; font: 850 clamp(1.5rem, 3vw, 2.4rem)/1.25 ui-serif, "Songti SC", serif; }
+.candidate-card > span { color: var(--amber); font: 800 0.75rem ui-monospace, monospace; }
+.candidate-card ul { color: var(--muted); line-height: 1.65; }
+.candidate-help { margin-top: 0.7rem; padding: 0; }
+.candidate-explanation { margin-top: 1rem; padding: 1rem; border-left: 3px solid var(--cyan); background: #121b23; }
+.candidate-explanation p { margin: 0.45rem 0; line-height: 1.65; }
+.candidate-explanation small { color: var(--muted); }
+.candidate-stage > p, .final-choice-stage > p { color: var(--muted); line-height: 1.65; }
+.candidate-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 1rem; }
+.candidate-actions button { min-height: 3.2rem; }
+.quiz-options--final { margin-top: 1rem; }
+.candidate-disposition { display: inline-block; margin-bottom: 0.7rem; }
+.candidate-disposition--kept { color: var(--mint) !important; }
+.candidate-disposition--skipped { color: var(--muted) !important; }
+
+.profile-card { padding: 1.3rem; }
+.profile-card__heading span { color: var(--amber); font: 800 0.74rem ui-monospace, monospace; }
+.profile-card__heading strong { display: block; margin-top: 0.4rem; font: 850 1.6rem ui-serif, serif; }
+.profile-card > p { color: var(--muted); line-height: 1.65; }
+.profile-findings { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.7rem; margin-top: 1rem; }
+.profile-findings article { padding: 1rem; border: 1px solid #344452; border-radius: 0.45rem; background: #0e151b; }
+.profile-findings article > span { color: var(--amber); font: 800 0.8rem ui-monospace, monospace; }
+.profile-findings article > strong, .profile-findings article > small { display: block; }
+.profile-findings article > strong { margin: 0.55rem 0; line-height: 1.45; }
+.profile-findings article > small { color: var(--muted); }
+.profile-findings details { margin-top: 1rem; color: var(--muted); font-size: 0.84rem; }
+.profile-findings summary { cursor: pointer; }
+.profile-card__coverage { margin-bottom: 0; font: 0.8rem ui-monospace, monospace; }
+.profile-challenge { margin-top: 1rem; padding: 1.3rem; }
+.profile-challenge p { color: #d8dee3; font-size: 1.08rem; }
+
+.world-evidence {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid #486171;
+  border-radius: 0.45rem;
+  background: #101b22;
+}
+.world-evidence span { display: block; color: #9ec5db; font: 800 0.74rem ui-monospace, monospace; }
+.world-evidence strong { display: block; margin-top: 0.3rem; }
+.world-evidence ul { grid-column: 1 / -1; margin: 0; padding-left: 1.2rem; color: var(--muted); line-height: 1.6; }
+
+.profile-comparison { margin: 3rem 0; }
+.profile-comparison__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
+.profile-comparison__grid > div > span { display: block; margin-bottom: 0.5rem; color: var(--muted); font: 800 0.78rem ui-monospace, monospace; }
+.profile-comparison .profile-findings { grid-template-columns: 1fr; }
+.comparison-evidence { margin-top: 0.8rem; padding: 1.2rem; }
+.comparison-evidence ul, .comparison-evidence p { color: var(--muted); line-height: 1.6; }
+
 @keyframes alarm-pulse {
   0%, 85%, 100% { box-shadow: 0 0 0 0 rgba(255, 102, 95, 0); }
   92% { box-shadow: 0 0 0 8px rgba(255, 102, 95, 0.18); }
@@ -497,6 +609,7 @@ main { width: min(1500px, 100%); margin: 0 auto; }
   .decision-list, .verdict-comparison, .achievement-grid { grid-template-columns: 1fr; }
   .final-checks > article { grid-template-columns: auto 1fr; }
   .final-checks details { grid-column: 2; }
+  .quiz-facts, .profile-comparison__grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 520px) {
@@ -505,6 +618,8 @@ main { width: min(1500px, 100%); margin: 0 auto; }
   .hero, .selection-page, .career-page, .settlement { padding-right: 1rem; padding-left: 1rem; }
   .hero h1 { font-size: 3.7rem; }
   .facts-grid, .resource-grid { grid-template-columns: 1fr; }
+  .quiz-options, .profile-findings, .candidate-actions { grid-template-columns: 1fr; }
+  .world-evidence { grid-template-columns: 1fr; }
   .incident-card__topline { flex-direction: column; }
   .signal-box { grid-template-columns: 1fr; }
 }

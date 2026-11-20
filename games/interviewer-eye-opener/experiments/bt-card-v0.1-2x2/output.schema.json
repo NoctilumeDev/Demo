@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/NoctilumeDev/Demo/bt-card-v0.1-2x2-output.schema.json",
+  "title": "BT-CARD-v0.1 2x2 session record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "experimentId",
+    "sessionId",
+    "status",
+    "model",
+    "condition",
+    "coordinates",
+    "hashes",
+    "parameters",
+    "startedAt",
+    "finishedAt",
+    "questions",
+    "errors"
+  ],
+  "properties": {
+    "experimentId": { "const": "BT-CARD-v0.1-2x2-r2" },
+    "sessionId": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["PILOT", "FORMAL", "FAILED", "NOT_RUN"] },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["participantId", "provider", "requestedModel", "resolvedModel"],
+      "properties": {
+        "participantId": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "requestedModel": { "type": "string", "minLength": 1 },
+        "resolvedModel": { "type": ["string", "null"] }
+      }
+    },
+    "condition": { "enum": ["A", "B", "C", "D"] },
+    "coordinates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["presentation", "context", "questionVersion", "protocolVersion", "sourceCommit"],
+      "properties": {
+        "presentation": { "enum": ["FOUR_WAY", "CARD_KEEP_THEN_CHOOSE"] },
+        "context": { "enum": ["COLD", "FIXED_CONTEXT"] },
+        "questionVersion": { "const": "BT-v0.3.2" },
+        "protocolVersion": { "enum": ["BT-FOUR-WAY-v0.1", "BT-CARD-v0.1-rc1"] },
+        "sourceCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" }
+      }
+    },
+    "hashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["questionBankSha256", "contextPacketSha256", "promptTemplateSha256", "outputSchemaSha256"],
+      "properties": {
+        "questionBankSha256": { "$ref": "#/$defs/hash" },
+        "contextPacketSha256": { "anyOf": [{ "$ref": "#/$defs/hash" }, { "type": "null" }] },
+        "promptTemplateSha256": { "$ref": "#/$defs/hash" },
+        "outputSchemaSha256": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "parameters": { "type": "object" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "finishedAt": { "type": "string", "format": "date-time" },
+    "questions": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": { "$ref": "#/$defs/questionRecord" }
+    },
+    "errors": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "cardJudgment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["optionId", "decision", "explanationViewedBeforeDecision", "assumptions", "reasoningSummary"],
+      "properties": {
+        "optionId": { "type": "string", "pattern": "^Q[1-7]-[A-D]$" },
+        "decision": { "enum": ["KEEP", "SKIP"] },
+        "explanationViewedBeforeDecision": { "const": false },
+        "assumptions": { "type": "array", "items": { "type": "string" } },
+        "reasoningSummary": { "type": "string" }
+      }
+    },
+    "questionRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["questionId", "presentationOrder", "cardJudgments", "finalChoice", "assumptions", "reasoningSummary", "rawPromptHashes", "rawResponseHashes"],
+      "properties": {
+        "questionId": { "type": "string", "pattern": "^Q[1-7]$" },
+        "presentationOrder": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^Q[1-7]-[A-D]$" }
+        },
+        "cardJudgments": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/$defs/cardJudgment" } }
+          ]
+        },
+        "finalChoice": { "type": "string", "pattern": "^Q[1-7]-[A-D]$" },
+        "assumptions": { "type": "array", "items": { "type": "string" } },
+        "reasoningSummary": { "type": "string" },
+        "rawPromptHashes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/hash" } },
+        "rawResponseHashes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/hash" } }
+      }
+    }
+  }
+}

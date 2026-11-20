@@ -1,45 +1,70 @@
 import "./styles.css";
 
 import { achievementById, initialCareer, recordCompletedRun } from "./game/achievements";
+import {
+  ASSESSMENT_QUESTIONS,
+  answerAssessment,
+  assessmentCandidateJudgments,
+  assessmentOption,
+  assessmentOptionExplanation,
+  assessmentQuestion,
+  assessmentQuestionAttempt,
+  currentAssessmentCandidate,
+  emptyAssessment,
+  judgeAssessmentCandidate,
+  markAssessmentExplanationViewed,
+  submittedAssessmentAttempts,
+} from "./game/assessment";
 import { FACTIONS, INCIDENTS, factionById } from "./game/content";
 import {
   advanceIncident,
   applyDecision,
   canApplyDecision,
+  canRetryCurrentIncident,
   completeNextCourse,
   createRun,
   currentAttempt,
   currentIncident,
   decisionPrice,
   hasPendingCourse,
+  incidentEvidence,
   retryCurrentIncident,
   toggleAcademicScope,
+  viewCurrentEvidence,
 } from "./game/engine";
 import { checkForIncident, judgeRun } from "./game/judge";
+import { compareProfiles, deriveBehaviorProfile, deriveEntryProfile } from "./game/profile";
 import { calculateFactionScore } from "./game/score";
 import {
+  clearAssessmentDraft,
   clearActiveRun,
+  loadAssessmentDraft,
   loadActiveRun,
   loadCareer,
+  saveAssessmentDraft,
   saveActiveRun,
   saveCareer,
 } from "./game/storage";
 import type {
   CareerState,
+  CandidateDisposition,
+  EntryAssessment,
   FactValue,
   FactionId,
   GameRun,
   IncidentId,
+  ProfileReport,
   VerdictStatus,
 } from "./game/types";
 
-type Screen = "HOME" | "SELECT" | "GAME" | "CAREER";
+type Screen = "HOME" | "QUIZ" | "ENTRY_PROFILE" | "SELECT" | "GAME" | "CAREER";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Missing #app");
 
 let career: CareerState = loadCareer(window.localStorage);
 let run: GameRun | undefined = loadActiveRun(window.localStorage);
+let assessment: EntryAssessment = loadAssessmentDraft(window.localStorage) ?? emptyAssessment();
 let screen: Screen = run ? "GAME" : "HOME";
 let notice = "";
 let restartRequested = false;
@@ -72,6 +97,7 @@ const factLabels: Record<string, string> = {
   p95Ms: "P95 延迟",
   countConsistent: "计数一致",
   measured: "保留压测证据",
+  effectiveCapacity: "连续世界有效容量",
   charges: "实际扣款次数",
   reproduced: "反例已复现",
   rootCauseFound: "根因已定位",
@@ -109,9 +135,9 @@ const renderHome = (): string => {
       <div class="hero__copy">
         <p class="eyebrow">工程反例游乐场 / 第一款游戏</p>
         <h1>面试官<br /><em>眼前一亮</em></h1>
-        <p class="hero__subtitle">同一个点赞需求，五种流派，五种评价标准。最后让故障决定谁说了算。</p>
+        <p class="hero__subtitle">先回答七个工程困境，看看你说自己会怎么选。再把你放进真的预算和故障里，看看现场记录同不同意。</p>
         <div class="hero__actions">
-          <button class="primary-button" data-action="start" data-testid="home-start">开始一局</button>
+          <button class="primary-button" data-action="start" data-testid="home-start">${assessment.questionAttempts.some((attempt) => attempt.events.length > 0) && !assessment.completed ? "继续入场测试" : "测测我是哪一派"}</button>
           ${run ? `<button class="secondary-button" data-action="resume" data-testid="resume-run">继续 ${factionById(run.factionId).name}</button>` : ""}
         </div>
       </div>
@@ -129,6 +155,130 @@ const renderHome = (): string => {
       <article><span>业务合同</span><strong>一个用户最多贡献一个有效点赞</strong></article>
       <article><span>独立裁判</span><strong>评分变漂亮，事实也不会跟着变</strong></article>
       <article><span>最近结果</span><strong>${latest ? `${factionById(latest.factionId).name} / ${latest.businessStatus}` : "尚未开始第一局"}</strong></article>
+    </section>
+  `);
+};
+
+const renderProfileFindings = (profile: ProfileReport, testId: string): string => `
+  <section class="profile-card" data-testid="${testId}">
+    <div class="profile-card__heading">
+      <span>${profile.status === "NO_SIGNAL" ? "NO_SIGNAL" : "候选观察"}</span>
+      <strong>${profile.title}</strong>
+    </div>
+    <p>${profile.summary}</p>
+    ${profile.findings.length > 0 ? `
+      <div class="profile-findings">
+        ${profile.findings.map((finding) => `
+          <article>
+            <span>${finding.dimension}</span>
+            <strong>${finding.label}</strong>
+            <small>观察强度 ${finding.strength} · 不是百分比</small>
+            <details><summary>为什么这么说</summary><ul>${finding.evidence.map((item) => `<li>${item}</li>`).join("")}</ul></details>
+          </article>
+        `).join("")}
+      </div>
+    ` : ""}
+    <p class="profile-card__coverage">有效观察 ${profile.eligibleObservations} 条 · 无画像信号 ${profile.noSignalObservations} 条</p>
+  </section>
+`;
+
+const renderQuiz = (): string => {
+  const index = submittedAssessmentAttempts(assessment).length;
+  const question = assessmentQuestion(index);
+  if (!question) return renderEntryProfile();
+  const questionAttempt = assessmentQuestionAttempt(assessment, question.id);
+  const judgments = assessmentCandidateJudgments(assessment, question.id);
+  const candidate = currentAssessmentCandidate(assessment, question.id);
+  const candidateNumber = judgments.length + 1;
+  const keptIds = judgments
+    .filter((judgment) => judgment.disposition === "KEEP")
+    .map((judgment) => judgment.optionId);
+  const orderedOptions = (questionAttempt?.presentationOrder ?? [])
+    .map((optionId) => assessmentOption(optionId))
+    .filter((option) => option !== undefined);
+  const selectionMessage = keptIds.length === question.options.length
+    ? "四个方案你都愿意考虑。很好，预算没有因此变成四份。"
+    : keptIds.length === 0
+      ? "四个方案你都跳过了。事故没有因此取消，现在仍然要选一条路。"
+      : `你留下了 ${keptIds.length} 个候选。保留不等于执行，现在只能选一个。`;
+  return renderShell(`
+    <section class="quiz-page" data-testid="assessment-quiz">
+      <div class="quiz-progress" aria-label="题目进度">
+        <span>BT-v0.3.2 题目 · BT-CARD-v0.1-rc1 协议</span>
+        <strong>第 ${index + 1} 题 / ${ASSESSMENT_QUESTIONS.length}${candidate ? ` · 候选 ${candidateNumber}/4` : " · 最终取舍"}</strong>
+        <div class="meter"><i style="width:${(index / ASSESSMENT_QUESTIONS.length) * 100}%"></i></div>
+      </div>
+      <article class="quiz-card">
+        <p class="eyebrow">工程决策题卡</p>
+        <h2>${question.title}</h2>
+        <div class="quiz-facts">
+          <section><span>已知事实</span><p>${question.knownFacts}</p></section>
+          <section><span>尚不清楚</span><p>${question.unknownFacts}</p></section>
+          <section><span>限制</span><p>${question.constraint}</p></section>
+        </div>
+        ${candidate ? `
+          <section class="candidate-stage" data-testid="candidate-stage">
+            <div class="candidate-stage__counter"><span>当前方案</span><strong>${candidateNumber} / 4</strong></div>
+            <article class="candidate-card" data-testid="candidate-${candidate.id}">
+              <h3>${candidate.label}</h3>
+              <span>你已经知道的主要代价</span>
+              <ul>${candidate.knownCosts.map((cost) => `<li>${cost}</li>`).join("")}</ul>
+              ${questionAttempt?.events.some((event) => event.kind === "EXPLANATION_VIEWED" && event.optionId === candidate.id) ? `
+                <div class="candidate-explanation" data-testid="explanation-${candidate.id}">
+                  <strong>这句话在说什么？</strong>
+                  <p>${assessmentOptionExplanation(candidate.id)}</p>
+                  <small>这段解释只翻译动作，不替它判对错，也不产生画像分数。</small>
+                </div>
+              ` : `
+                <button class="text-button candidate-help" data-action="explain-assessment-option" data-option="${candidate.id}" data-testid="explain-${candidate.id}">这是什么意思？</button>
+              `}
+            </article>
+            <p>你愿不愿意把它留到最后比较？保留不等于执行，跳过也不等于判它错误。</p>
+            <div class="candidate-actions">
+              <button class="secondary-button" data-action="judge-assessment-candidate" data-disposition="SKIP" data-question="${question.id}" data-option="${candidate.id}" data-testid="skip-${candidate.id}">跳过</button>
+              <button class="primary-button" data-action="judge-assessment-candidate" data-disposition="KEEP" data-question="${question.id}" data-option="${candidate.id}" data-testid="keep-${candidate.id}">先留下</button>
+            </div>
+          </section>
+        ` : `
+          <section class="final-choice-stage" data-testid="final-choice-stage">
+            <p class="eyebrow">真正的资源取舍</p>
+            <h3>${question.prompt}</h3>
+            <p>${selectionMessage}</p>
+            <div class="quiz-options quiz-options--final">
+              ${orderedOptions.map((option) => {
+                const kept = keptIds.includes(option.id);
+                return `
+                  <button data-action="answer-assessment" data-question="${question.id}" data-option="${option.id}" data-testid="assessment-${option.id}">
+                    <span class="candidate-disposition candidate-disposition--${kept ? "kept" : "skipped"}">${kept ? "先前留下" : "先前跳过"}</span>
+                    <strong>${option.label}</strong>
+                    <span>现在选它，就要承担</span>
+                    <ul>${option.knownCosts.map((cost) => `<li>${cost}</li>`).join("")}</ul>
+                  </button>
+                `;
+              }).join("")}
+            </div>
+            <p class="quiz-lock-note">你可以改主意。逐张判断、展示顺序和最终选择会分别保存，后面的画像不能回写它们。</p>
+          </section>
+        `}
+      </article>
+    </section>
+  `);
+};
+
+const renderEntryProfile = (): string => {
+  const profile = deriveEntryProfile(assessment);
+  return renderShell(`
+    <section class="profile-page" data-testid="entry-profile">
+      <div class="section-heading">
+        <p class="eyebrow">入场画像 · 你宣称如何决策</p>
+        <h2>${profile.title}</h2>
+        <p>这七题尚未经过真人量表验证。这里展示候选维度与原始依据，不生成“工程派 76%”。</p>
+      </div>
+      ${renderProfileFindings(profile, "entry-profile-report")}
+      <div class="profile-challenge">
+        <p>目前我们只知道你怎么回答问题。预算真的开始减少时，你还会这么选吗？</p>
+        <button class="primary-button" data-action="enter-faction-select" data-testid="enter-game">不服？进场证明</button>
+      </div>
     </section>
   `);
 };
@@ -183,6 +333,8 @@ const renderProgress = (activeRun: GameRun): string => `
 const renderDecisionPanel = (activeRun: GameRun): string => {
   const incident = currentIncident(activeRun);
   if (!incident) return "";
+  const evidenceViewed = activeRun.viewedEvidence.includes(incident.id);
+  const evidence = incidentEvidence(activeRun);
   return `
     <div class="incident-card incident-card--decision">
       <div class="incident-card__topline">
@@ -192,6 +344,17 @@ const renderDecisionPanel = (activeRun: GameRun): string => {
       <h2>${incident.title}</h2>
       <p class="incident-card__brief">${incident.brief}</p>
       <div class="signal-box"><span>现场信号</span><p>${incident.signal}</p></div>
+      <section class="world-evidence" data-testid="world-evidence">
+        <div>
+          <span>可选取证</span>
+          <strong>${evidenceViewed ? "已经查看，证据进入行为记录" : "花 1 时间，看看连续世界留下了什么"}</strong>
+        </div>
+        ${evidenceViewed ? `
+          <ul>${evidence.map((item) => `<li>${item}</li>`).join("")}</ul>
+        ` : `
+          <button class="secondary-button" data-action="view-evidence" data-testid="view-evidence" ${activeRun.timeRemaining < 1 ? "disabled" : ""}>查看现场证据 · 时间 1</button>
+        `}
+      </section>
       <h3>${incident.question}</h3>
       <div class="decision-list">
         ${incident.decisions.map((decision) => {
@@ -255,7 +418,7 @@ const renderReviewPanel = (activeRun: GameRun): string => {
         <ul>${attempt.observation.evidence.map((item) => `<li>${item}</li>`).join("")}</ul>
       </details>
       <div class="review-actions">
-        <button class="secondary-button" data-action="retry" data-testid="retry-incident">保留记录，调整方案</button>
+        <button class="secondary-button" data-action="retry" data-testid="retry-incident" ${canRetryCurrentIncident(activeRun) ? "" : "disabled"}>保留记录，回退重选 · 时间 1</button>
         ${activeRun.factionId === "academic" ? `
           <button class="secondary-button academic-button" data-action="toggle-scope" data-testid="toggle-scope">
             ${isExcluded ? "恢复课程验收" : "本题暂不讨论"}
@@ -324,6 +487,12 @@ const renderLedger = (activeRun: GameRun): string => {
         <div><span>时间</span><strong>${activeRun.timeRemaining}</strong></div>
         <div><span>复杂度</span><strong>${activeRun.complexity}</strong></div>
         <div><span>证据</span><strong>${activeRun.evidenceScore}</strong></div>
+        <div><span>当前负载</span><strong>${activeRun.world.load}</strong></div>
+        <div><span>可靠性债</span><strong>${activeRun.world.reliabilityDebt}</strong></div>
+      </section>
+      <section class="ledger-block">
+        <span class="ledger-label">行为观测</span>
+        <p>${activeRun.behaviorLog.filter((event) => event.observationEligible).length} 条合格 · ${activeRun.behaviorLog.filter((event) => !event.observationEligible).length} 条只记录不推断</p>
       </section>
       <section class="ledger-block">
         <span class="ledger-label">当前组件</span>
@@ -372,6 +541,9 @@ const renderSettlement = (activeRun: GameRun): string => {
   const verdict = activeRun.finalVerdict ?? judgeRun(activeRun);
   const score = calculateFactionScore(activeRun, verdict);
   const faction = factionById(activeRun.factionId);
+  const entryProfile = deriveEntryProfile(activeRun.entryAssessment);
+  const behaviorProfile = deriveBehaviorProfile(activeRun.behaviorLog);
+  const comparison = compareProfiles(entryProfile, behaviorProfile, activeRun.behaviorLog);
   const unlocked = activeRun.unlockedAchievementIds
     .map((id) => achievementById(id))
     .filter((achievement) => achievement !== undefined);
@@ -387,6 +559,21 @@ const renderSettlement = (activeRun: GameRun): string => {
         <article><span>${score.label}</span><strong>${score.value}/${score.maximum}</strong><p>${score.note}</p></article>
         <article><span>资源账</span><strong>${activeRun.budget} 预算</strong><p>剩余时间 ${activeRun.timeRemaining}，复杂度 ${activeRun.complexity}。</p></article>
       </div>
+      <section class="profile-comparison" data-testid="profile-comparison">
+        <div class="section-heading section-heading--compact">
+          <p class="eyebrow">双画像 · 分开记账</p>
+          <h2>${comparison.title}</h2>
+          <p>${comparison.explanation}</p>
+        </div>
+        <div class="profile-comparison__grid">
+          <div><span>入场画像</span>${renderProfileFindings(entryProfile, "settlement-entry-profile")}</div>
+          <div><span>行为画像</span>${renderProfileFindings(behaviorProfile, "settlement-behavior-profile")}</div>
+        </div>
+        <div class="comparison-evidence">
+          <strong>变化依据</strong>
+          ${comparison.evidence.length > 0 ? `<ul>${comparison.evidence.map((item) => `<li>${item}</li>`).join("")}</ul>` : `<p>当前证据不足，不强行解释。</p>`}
+        </div>
+      </section>
       <section class="final-checks">
         <div class="section-heading section-heading--compact"><p class="eyebrow">完整事实剧本</p><h2>裁判逐项结论</h2></div>
         ${verdict.checks.map((check) => `
@@ -449,13 +636,14 @@ const renderCareer = (): string => renderShell(`
       <div class="panel-heading"><span>周目对照</span><b>${career.runs.length}</b></div>
       ${career.runs.length === 0 ? `<p class="empty-state">还没有完成的周目。三枚项目历史成就已经在等你了。</p>` : `
         <div class="run-table-wrap"><table class="run-table">
-          <thead><tr><th>周目</th><th>流派</th><th>业务</th><th>流派评分</th><th>预算</th><th>复杂度</th></tr></thead>
+          <thead><tr><th>周目</th><th>流派</th><th>业务</th><th>流派评分</th><th>画像对照</th><th>预算</th><th>复杂度</th></tr></thead>
           <tbody>${career.runs.map((item) => `
             <tr>
               <td>${item.runNumber}</td>
               <td>${factionById(item.factionId).name}</td>
               <td><b class="${statusClass(item.businessStatus)}">${item.businessStatus}</b></td>
               <td>${item.factionScore.value}/${item.factionScore.maximum}</td>
+              <td>${item.profileComparisonStatus ?? "历史版本未记录"}</td>
               <td>${item.budgetRemaining}</td>
               <td>${item.complexity}</td>
             </tr>
@@ -486,6 +674,14 @@ const renderRestartDialog = (): string => {
 };
 
 const currentViewKey = (): string => {
+  if (screen === "QUIZ") {
+    const submitted = submittedAssessmentAttempts(assessment).length;
+    const question = assessmentQuestion(submitted);
+    const candidateCount = question
+      ? assessmentCandidateJudgments(assessment, question.id).length
+      : 0;
+    return `QUIZ:${submitted}:${candidateCount}`;
+  }
   if (screen !== "GAME" || !run) return screen;
   if (run.phase === "SETTLED") return `SETTLEMENT:${run.runId}`;
   return `INCIDENT:${run.runId}:${run.incidentIndex}`;
@@ -514,6 +710,8 @@ const focusRestartTrigger = (): void => {
 const render = (): void => {
   notice = notice.trim();
   if (screen === "HOME") app.innerHTML = renderHome();
+  if (screen === "QUIZ") app.innerHTML = renderQuiz();
+  if (screen === "ENTRY_PROFILE") app.innerHTML = renderEntryProfile();
   if (screen === "SELECT") app.innerHTML = renderFactionSelect();
   if (screen === "CAREER") app.innerHTML = renderCareer();
   if (screen === "GAME") app.innerHTML = run ? renderGame(run) : renderHome();
@@ -553,9 +751,14 @@ app.addEventListener("click", (event) => {
           restartTriggerAction = action;
           restartRequested = true;
         } else {
+          const resetAssessment = action === "new-run" || run?.phase === "SETTLED";
           clearActiveRun(window.localStorage);
           run = undefined;
-          screen = "SELECT";
+          if (resetAssessment) {
+            assessment = emptyAssessment();
+            saveAssessmentDraft(window.localStorage, assessment);
+          }
+          screen = assessment.completed ? "ENTRY_PROFILE" : "QUIZ";
         }
         break;
       case "cancel-restart":
@@ -566,7 +769,9 @@ app.addEventListener("click", (event) => {
         restartRequested = false;
         clearActiveRun(window.localStorage);
         run = undefined;
-        screen = "SELECT";
+        assessment = emptyAssessment();
+        saveAssessmentDraft(window.localStorage, assessment);
+        screen = "QUIZ";
         break;
       case "resume":
         screen = "GAME";
@@ -574,13 +779,49 @@ app.addEventListener("click", (event) => {
       case "career":
         screen = "CAREER";
         break;
+      case "answer-assessment":
+        if (button.dataset.question && button.dataset.option) {
+          assessment = answerAssessment(assessment, button.dataset.question, button.dataset.option);
+          saveAssessmentDraft(window.localStorage, assessment);
+          screen = assessment.completed ? "ENTRY_PROFILE" : "QUIZ";
+        }
+        break;
+      case "explain-assessment-option":
+        if (button.dataset.option) {
+          assessment = markAssessmentExplanationViewed(assessment, button.dataset.option);
+          saveAssessmentDraft(window.localStorage, assessment);
+        }
+        break;
+      case "judge-assessment-candidate":
+        if (button.dataset.question && button.dataset.option && button.dataset.disposition) {
+          assessment = judgeAssessmentCandidate(
+            assessment,
+            button.dataset.question,
+            button.dataset.option,
+            button.dataset.disposition as CandidateDisposition,
+          );
+          saveAssessmentDraft(window.localStorage, assessment);
+        }
+        break;
+      case "enter-faction-select":
+        if (!assessment.completed) throw new Error("七道题还没有完成。 ");
+        screen = "SELECT";
+        break;
       case "choose-faction": {
+        if (!assessment.completed) throw new Error("先完成入场测试。 ");
         const factionId = button.dataset.faction as FactionId;
-        run = createRun(factionId, career.nextRunNumber);
+        run = createRun(factionId, career.nextRunNumber, assessment);
+        clearAssessmentDraft(window.localStorage);
         persistRun();
         screen = "GAME";
         break;
       }
+      case "view-evidence":
+        if (run) {
+          run = viewCurrentEvidence(run);
+          persistRun();
+        }
+        break;
       case "apply-decision":
         if (run && button.dataset.decision) {
           run = applyDecision(run, button.dataset.decision);

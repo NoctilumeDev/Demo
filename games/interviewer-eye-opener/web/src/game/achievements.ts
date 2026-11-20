@@ -1,4 +1,5 @@
 import { calculateFactionScore } from "./score";
+import { compareProfiles, deriveBehaviorProfile, deriveEntryProfile } from "./profile";
 import type {
   AchievementDefinition,
   AchievementUnlock,
@@ -192,6 +193,11 @@ export const recordCompletedRun = (
     sequence: career.achievements.length + index + 1,
   }));
   const factionScore = calculateFactionScore(run, verdict);
+  const profileComparison = compareProfiles(
+    deriveEntryProfile(run.entryAssessment),
+    deriveBehaviorProfile(run.behaviorLog),
+    run.behaviorLog,
+  );
   const summary: RunSummary = {
     runId: run.runId,
     worldId: run.worldId,
@@ -203,6 +209,7 @@ export const recordCompletedRun = (
     budgetRemaining: run.budget,
     timeRemaining: run.timeRemaining,
     complexity: run.complexity,
+    profileComparisonStatus: profileComparison.status,
   };
   const updatedRun: GameRun = {
     ...run,
