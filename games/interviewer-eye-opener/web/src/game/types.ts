@@ -13,6 +13,126 @@ export type IncidentId =
 
 export type FactValue = boolean | number | string;
 
+export type ProfileDimension = "E" | "C" | "D" | "A" | "V" | "L" | "R" | "X" | "J";
+
+export type ProfileSignal =
+  | { status: "OBSERVED"; dimensions: Partial<Record<ProfileDimension, number>> }
+  | { status: "NO_SIGNAL"; reason: string };
+
+export interface AssessmentOption {
+  id: string;
+  label: string;
+  knownCosts: string[];
+  signal: ProfileSignal;
+}
+
+export interface AssessmentQuestion {
+  id: string;
+  title: string;
+  knownFacts: string;
+  unknownFacts: string;
+  constraint: string;
+  prompt: string;
+  options: AssessmentOption[];
+}
+
+export type CandidateDisposition = "KEEP" | "SKIP";
+
+export interface AssessmentCandidateJudgment {
+  questionId: string;
+  optionId: string;
+  disposition: CandidateDisposition;
+  presentedOrder: number;
+  explanationViewedBeforeDecision: boolean;
+}
+
+export type QuestionAttemptPhase = "JUDGING" | "CHOOSING" | "SUBMITTED";
+
+export type QuestionAttemptEvent =
+  | { sequence: number; kind: "EXPLANATION_VIEWED"; optionId: string }
+  | { sequence: number; kind: "CARD_JUDGED"; optionId: string; disposition: CandidateDisposition }
+  | { sequence: number; kind: "FINAL_CHOICE"; optionId: string };
+
+export interface AssessmentQuestionAttempt {
+  attemptId: string;
+  protocol: "CARD_KEEP_THEN_CHOOSE";
+  protocolVersion: "BT-CARD-v0.1-rc1";
+  questionVersion: "BT-v0.3.2";
+  questionId: string;
+  presentationOrder: string[];
+  cardJudgments: AssessmentCandidateJudgment[];
+  finalChoice: string | null;
+  phase: QuestionAttemptPhase;
+  events: QuestionAttemptEvent[];
+}
+
+export interface EntryAssessment {
+  version: "BT-v0.3.2" | "LEGACY-NO-ASSESSMENT";
+  protocolVersion: "BT-CARD-v0.1-rc1" | "LEGACY-NO-ASSESSMENT";
+  interactionMode: "CARD_KEEP_THEN_CHOOSE" | "LEGACY";
+  orderSeed: number;
+  questionAttempts: AssessmentQuestionAttempt[];
+  completed: boolean;
+}
+
+export type BehaviorEventKind =
+  | "SYSTEM"
+  | "VIEW_EVIDENCE"
+  | "DECISION"
+  | "RETRY"
+  | "SCOPE_CHANGE"
+  | "COURSE"
+  | "ADVANCE";
+
+export interface BehaviorEvent {
+  eventId: string;
+  sequence: number;
+  kind: BehaviorEventKind;
+  incidentId?: IncidentId;
+  action: string;
+  observationEligible: boolean;
+  eligibilityReason: string;
+  availableAlternatives: string[];
+  knownCosts: string[];
+  evidenceSeenBeforeAction: string[];
+  signal: ProfileSignal;
+}
+
+export interface WorldState {
+  load: number;
+  targetLoad: number;
+  databaseCapacity: number;
+  readShare: number;
+  redisAvailable: boolean;
+  mqAvailable: boolean;
+  reliabilityDebt: number;
+  unresolvedFailures: number;
+  responseLost: boolean;
+}
+
+export interface ProfileFinding {
+  dimension: ProfileDimension;
+  label: string;
+  strength: number;
+  evidence: string[];
+}
+
+export interface ProfileReport {
+  status: "LOCAL_TENDENCIES" | "NO_SIGNAL";
+  title: string;
+  summary: string;
+  findings: ProfileFinding[];
+  eligibleObservations: number;
+  noSignalObservations: number;
+}
+
+export interface ProfileComparison {
+  status: "CONSISTENT" | "EVIDENCE_UPDATE" | "INSUFFICIENT";
+  title: string;
+  explanation: string;
+  evidence: string[];
+}
+
 export interface FactionDefinition {
   id: FactionId;
   name: string;
@@ -60,6 +180,8 @@ export interface IncidentAttempt {
   decisionTitle: string;
   budgetSpent: number;
   timeSpent: number;
+  worldBefore: WorldState;
+  worldAfter: WorldState;
   observation: SimulationObservation;
 }
 
@@ -103,7 +225,7 @@ export interface FactionScore {
 }
 
 export interface GameRun {
-  schemaVersion: 1;
+  schemaVersion: 2;
   runId: string;
   worldId: string;
   runNumber: number;
@@ -114,6 +236,10 @@ export interface GameRun {
   timeRemaining: number;
   complexity: number;
   evidenceScore: number;
+  entryAssessment: EntryAssessment;
+  world: WorldState;
+  behaviorLog: BehaviorEvent[];
+  viewedEvidence: IncidentId[];
   components: string[];
   controls: string[];
   excludedFromCourse: IncidentId[];
@@ -151,6 +277,7 @@ export interface RunSummary {
   budgetRemaining: number;
   timeRemaining: number;
   complexity: number;
+  profileComparisonStatus?: ProfileComparison["status"];
 }
 
 export interface CareerState {
