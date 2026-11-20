@@ -1,4 +1,4 @@
-name: MySQL baseline S0-S6
+name: Game V1 and MySQL baseline
 
 on:
   pull_request:
@@ -9,7 +9,51 @@ permissions:
   contents: read
 
 jobs:
+  game:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: games/interviewer-eye-opener/web
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: games/interviewer-eye-opener/web/.node-version
+          cache: npm
+          cache-dependency-path: games/interviewer-eye-opener/web/package-lock.json
+
+      - name: Install locked browser game dependencies
+        run: npm ci
+
+      - name: Check game rules
+        run: npm test
+
+      - name: Build the browser game
+        run: npm run build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Play complete browser journeys
+        run: npm run test:e2e
+
+      - name: Retain browser evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: interviewer-eye-opener-v1-${{ github.run_id }}
+          path: |
+            games/interviewer-eye-opener/web/test-results/evidence/
+            games/interviewer-eye-opener/web/test-results/raw/
+            games/interviewer-eye-opener/web/playwright-report/
+          if-no-files-found: warn
+          retention-days: 14
+
   qualify:
+    needs: game
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
