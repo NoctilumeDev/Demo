@@ -42,8 +42,11 @@ for (const question of record.questions ?? []) {
   if (!Array.isArray(question.assumptions) || typeof question.reasoningSummary !== "string") {
     fail(`${question.questionId}: first-round assumptions and reasoning summary are required`);
   }
-  if (!Array.isArray(question.rawMessageHashes) || question.rawMessageHashes.length === 0) {
-    fail(`${question.questionId}: raw message hashes are required`);
+  if (!Array.isArray(question.rawPromptHashes) || question.rawPromptHashes.length === 0) {
+    fail(`${question.questionId}: raw prompt hashes are required`);
+  }
+  if (!Array.isArray(question.rawResponseHashes) || question.rawResponseHashes.length === 0) {
+    fail(`${question.questionId}: raw response hashes are required`);
   }
   if (Object.hasOwn(question, "retainedOptionIds")) {
     fail(`${question.questionId}: retainedOptionIds must be derived, not stored as a second authority`);
@@ -65,9 +68,14 @@ for (const question of record.questions ?? []) {
       if (question.cardJudgments.some((judgment) => !Array.isArray(judgment.assumptions) || typeof judgment.reasoningSummary !== "string")) {
         fail(`${question.questionId}: each card requires its own locked assumptions and reasoning summary`);
       }
+      if (question.rawPromptHashes.length !== 5 || question.rawResponseHashes.length !== 5) {
+        fail(`${question.questionId}: card condition requires four judgment turns and one final turn`);
+      }
     }
   } else if (question.cardJudgments !== null) {
     fail(`${question.questionId}: FOUR_WAY record must not invent card judgments`);
+  } else if (question.rawPromptHashes.length !== 1 || question.rawResponseHashes.length !== 1) {
+    fail(`${question.questionId}: FOUR_WAY condition requires exactly one turn`);
   }
 }
 

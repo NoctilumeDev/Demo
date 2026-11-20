@@ -53,7 +53,8 @@ const valid = {
     finalChoice: presentationOrder[1],
     assumptions: [],
     reasoningSummary: "locked final choice",
-    rawMessageHashes: [sampleHash],
+    rawPromptHashes: [sampleHash, sampleHash, sampleHash, sampleHash, sampleHash],
+    rawResponseHashes: [sampleHash, sampleHash, sampleHash, sampleHash, sampleHash],
   })),
   errors: [],
 };
