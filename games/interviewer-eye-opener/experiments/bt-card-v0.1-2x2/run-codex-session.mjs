@@ -228,6 +228,7 @@ const record = {
     context: coordinate.context,
     questionVersion: manifest.questionVersion,
     protocolVersion: coordinate.protocolVersion,
+    sourceCommit: manifest.sourceCommit,
   },
   hashes: {
     questionBankSha256: manifest.hashes.questionBankSha256,

@@ -21,6 +21,7 @@ if (coordinate && record.coordinates?.presentation !== coordinate.presentation) 
 if (coordinate && record.coordinates?.context !== coordinate.context) fail("context coordinate mismatch");
 if (record.coordinates?.questionVersion !== manifest.questionVersion) fail("questionVersion mismatch");
 if (coordinate && record.coordinates?.protocolVersion !== coordinate.protocolVersion) fail("protocolVersion mismatch");
+if (record.coordinates?.sourceCommit !== manifest.sourceCommit) fail("sourceCommit mismatch");
 if (record.hashes?.questionBankSha256 !== manifest.hashes.questionBankSha256) fail("question bank hash mismatch");
 if (record.hashes?.outputSchemaSha256 !== manifest.hashes.outputSchemaSha256) fail("output schema hash mismatch");
 const expectedContextHash = coordinate?.context === "FIXED_CONTEXT" ? manifest.hashes.contextPacketSha256 : null;

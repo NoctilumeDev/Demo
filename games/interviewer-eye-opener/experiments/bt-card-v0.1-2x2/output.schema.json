@@ -37,12 +37,13 @@
     "coordinates": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["presentation", "context", "questionVersion", "protocolVersion"],
+      "required": ["presentation", "context", "questionVersion", "protocolVersion", "sourceCommit"],
       "properties": {
         "presentation": { "enum": ["FOUR_WAY", "CARD_KEEP_THEN_CHOOSE"] },
         "context": { "enum": ["COLD", "FIXED_CONTEXT"] },
         "questionVersion": { "const": "BT-v0.3.2" },
-        "protocolVersion": { "enum": ["BT-FOUR-WAY-v0.1", "BT-CARD-v0.1-rc1"] }
+        "protocolVersion": { "enum": ["BT-FOUR-WAY-v0.1", "BT-CARD-v0.1-rc1"] },
+        "sourceCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" }
       }
     },
     "hashes": {

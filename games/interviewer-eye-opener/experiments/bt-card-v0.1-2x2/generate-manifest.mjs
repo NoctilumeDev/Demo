@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -69,6 +70,7 @@ const questionBankText = stable(questionBank);
 const contextPacket = fs.readFileSync(contextPacketPath, "utf8").replace(/\r\n/g, "\n");
 const outputSchema = fs.readFileSync(outputSchemaPath, "utf8").replace(/\r\n/g, "\n");
 const promptTemplatesText = stable(promptTemplates);
+const sourceCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repositoryRoot, encoding: "utf8" }).trim();
 
 write("question-bank.json", questionBankText);
 write("context-packet.md", contextPacket);
@@ -98,6 +100,7 @@ for (const [participantIndex, participant] of participants.entries()) {
 const manifest = {
   experimentId: "BT-CARD-v0.1-2x2",
   generatedAt: new Date().toISOString(),
+  sourceCommit,
   questionVersion: ASSESSMENT_VERSION,
   cardProtocolVersion: ASSESSMENT_PROTOCOL_VERSION,
   sessionsExpected: 52,
