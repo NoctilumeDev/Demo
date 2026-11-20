@@ -157,17 +157,30 @@ export const compareProfiles = (
     };
   }
 
-  const evidenceUpdates = events.filter(
-    (event) => event.observationEligible
-      && event.kind === "VIEW_EVIDENCE"
-      && event.signal.status === "OBSERVED",
-  );
-  if (evidenceUpdates.length > 0) {
+  const evidenceLinkedDecisions = events.filter((event) => {
+    if (!event.observationEligible
+        || event.kind !== "DECISION"
+        || event.signal.status !== "OBSERVED"
+        || event.evidenceSeenBeforeAction.length === 0) return false;
+    const supportsBehaviorTop = Object.entries(event.signal.dimensions).some(([dimension, strength]) => (
+      Boolean(strength) && behaviorTop.includes(dimension as ProfileDimension)
+    ));
+    const hasPriorEvidenceViewForIncident = events.some((candidate) => (
+      candidate.observationEligible
+      && candidate.kind === "VIEW_EVIDENCE"
+      && candidate.incidentId === event.incidentId
+      && candidate.sequence < event.sequence
+    ));
+    return supportsBehaviorTop && hasPriorEvidenceViewForIncident;
+  });
+  if (evidenceLinkedDecisions.length > 0) {
     return {
       status: "EVIDENCE_UPDATE",
-      title: "你改变了优先级，但现场留下了变化依据",
-      explanation: "这更像拿到新证据后的调整，不自动解释成人格反差或目标漂移。",
-      evidence: evidenceUpdates.map((event) => event.action).slice(0, 3),
+      title: "优先级变化前，确实查看了与后续决策相关的现场证据",
+      explanation: "记录能够证明查看证据发生在相关决策之前，但不能单凭时序关系断言证据就是改变选择的原因。",
+      evidence: evidenceLinkedDecisions.slice(0, 3).map((event) => (
+        `${event.action}；决策前看到：${event.evidenceSeenBeforeAction.join("、")}`
+      )),
     };
   }
 

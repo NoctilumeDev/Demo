@@ -57,4 +57,26 @@ describe("candidate profiles", () => {
     expect(comparison.status).toBe("EVIDENCE_UPDATE");
     expect(comparison.evidence.length).toBeGreaterThan(0);
   });
+
+  it("does not treat an unrelated evidence view as the cause of a later profile change", () => {
+    const assessment = completeAssessment([
+      "Q1-A", "Q2-A", "Q3-A", "Q4-A", "Q5-A", "Q6-C", "Q7-A",
+    ]);
+    let run = createRun("engineering", 1, assessment);
+    run = viewCurrentEvidence(run);
+    run = advanceIncident(applyDecision(run, "db-unique"));
+    run = viewCurrentEvidence(run);
+    run = applyDecision(run, "transactional-request-record");
+
+    const eventsWithoutDecisionLink = run.behaviorLog.map((event) => (
+      event.kind === "DECISION" ? { ...event, evidenceSeenBeforeAction: [] } : event
+    ));
+    const entry = deriveEntryProfile(assessment);
+    const behavior = deriveBehaviorProfile(eventsWithoutDecisionLink);
+    const comparison = compareProfiles(entry, behavior, eventsWithoutDecisionLink);
+
+    expect(eventsWithoutDecisionLink.some((event) => event.kind === "VIEW_EVIDENCE")).toBe(true);
+    expect(comparison.status).toBe("INSUFFICIENT");
+    expect(comparison.explanation).toContain("现有记录不足");
+  });
 });
