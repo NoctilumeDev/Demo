@@ -37,6 +37,7 @@ scenarioId
 | --- | --- |
 | 《开工第一天，居然真的能运行》 | [PR #1](https://github.com/NoctilumeDev/Demo/pull/1) 在页面和答辩动画出现以前，已经用真实 MySQL 跑通 S0—S6；[最终复验](https://github.com/NoctilumeDev/Demo/actions/runs/44647403533)通过后合并 |
 | 《考官被考了一次》 | 独立裁判第一次把两个隔离世界中不同但都合法的并发获胜者判成失败；失败记录留在 [PR #1](https://github.com/NoctilumeDev/Demo/pull/1)，错误假设在提交 [`4555f30`](https://github.com/NoctilumeDev/Demo/commit/4555f30) 中修正，原场景随后复验通过 |
+| 《文档驱动扩容》 | 实际运行世界只有两个，本地文档草稿却一度把五个设计世界写成已经交付；审查发现后在 [PR #2](https://github.com/NoctilumeDev/Demo/pull/2) 中纠正。未增加任何服务器，系统规模成功扩张 150%；本次扩容由 Markdown 提供技术支持。原始错误只存在于本地草稿，没有对应的错误提交 |
 
 ## 普通成就
 
