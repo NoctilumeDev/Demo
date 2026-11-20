@@ -1,5 +1,6 @@
 package dev.noctilume.demo.eyeopener;
 
+import dev.noctilume.demo.eyeopener.contract.BusinessResponse;
 import dev.noctilume.demo.eyeopener.contract.WorldCoordinate;
 import dev.noctilume.demo.eyeopener.judge.CrossWorldVerdict;
 import dev.noctilume.demo.eyeopener.judge.IndependentJudge;
@@ -13,12 +14,19 @@ import dev.noctilume.demo.eyeopener.report.ReportWriter;
 import dev.noctilume.demo.eyeopener.report.StrategySlot;
 import dev.noctilume.demo.eyeopener.report.TerminalReport;
 import dev.noctilume.demo.eyeopener.report.WorldEvidence;
+import dev.noctilume.demo.eyeopener.runner.ApplicationProcessExecutor;
+import dev.noctilume.demo.eyeopener.runner.AttemptTrace;
+import dev.noctilume.demo.eyeopener.runner.JavaApplicationProcessExecutor;
 import dev.noctilume.demo.eyeopener.runner.ScenarioRunner;
 import dev.noctilume.demo.eyeopener.runner.ScenarioTrace;
+import dev.noctilume.demo.eyeopener.runner.StepTrace;
 import dev.noctilume.demo.eyeopener.scenario.LoadedScenario;
 import dev.noctilume.demo.eyeopener.scenario.ScenarioLoader;
 import dev.noctilume.demo.eyeopener.world.WorldFactory;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
 import org.testcontainers.mysql.MySQLContainer;
 
 import java.nio.file.Path;
@@ -35,85 +43,203 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.function.UnaryOperator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MysqlBaselineQualificationTest {
     private static final String MYSQL_IMAGE = "mysql:8.4.13";
 
-    @Test
-    void qualifiesMysqlBaselineAgainstFrozenS0ToS6Script() throws Exception {
-        LoadedScenario scenario = ScenarioLoader.load();
+    private LoadedScenario scenario;
+    private MySQLContainer mysql;
+    private JdbcConnectionFactory connections;
+    private List<ScenarioTrace> traces;
+    private IndependentJudge judge;
+    private WorldVerdict firstVerdict;
+    private WorldVerdict secondVerdict;
+    private CrossWorldVerdict isolation;
+    private QualificationReport report;
 
-        try (MySQLContainer mysql = new MySQLContainer(MYSQL_IMAGE)
+    @BeforeAll
+    void executeFrozenScript() throws Exception {
+        scenario = ScenarioLoader.load();
+        mysql = new MySQLContainer(MYSQL_IMAGE)
                 .withDatabaseName("eye_opener")
                 .withUsername("demo")
                 .withPassword("demo")
                 .withCommand(
                         "--max-connections=300",
                         "--character-set-server=utf8mb4",
-                        "--collation-server=utf8mb4_0900_ai_ci")) {
-            mysql.start();
+                        "--collation-server=utf8mb4_0900_ai_ci");
+        mysql.start();
 
-            JdbcConnectionFactory connections = () -> DriverManager.getConnection(
-                    mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
-            SchemaManager.createSchema(connections);
+        connections = () -> DriverManager.getConnection(
+                mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
+        SchemaManager.createSchema(connections);
 
-            WorldFactory worldFactory = (coordinate, loadedScenario) ->
-                    new MysqlBaselineWorld(connections, coordinate, loadedScenario);
-            String coordinateSeed = UUID.randomUUID().toString();
-            WorldCoordinate firstCoordinate = new WorldCoordinate(
-                    "qualification-" + coordinateSeed + "-a", "mysql-baseline-a");
-            WorldCoordinate secondCoordinate = new WorldCoordinate(
-                    "qualification-" + coordinateSeed + "-b", "mysql-baseline-b");
+        WorldFactory worldFactory = (coordinate, loadedScenario) ->
+                new MysqlBaselineWorld(connections, coordinate, loadedScenario);
+        ApplicationProcessExecutor processExecutor = new JavaApplicationProcessExecutor(
+                mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
+        String coordinateSeed = UUID.randomUUID().toString();
+        WorldCoordinate firstCoordinate = new WorldCoordinate(
+                "qualification-" + coordinateSeed + "-a", "mysql-baseline-a");
+        WorldCoordinate secondCoordinate = new WorldCoordinate(
+                "qualification-" + coordinateSeed + "-b", "mysql-baseline-b");
 
-            List<ScenarioTrace> traces = runWorldsInParallel(
-                    scenario, worldFactory, firstCoordinate, secondCoordinate);
+        traces = runWorldsInParallel(
+                scenario, worldFactory, processExecutor, firstCoordinate, secondCoordinate);
 
-            IndependentJudge judge = new IndependentJudge();
-            WorldVerdict firstVerdict = judge.judge(scenario, traces.get(0));
-            WorldVerdict secondVerdict = judge.judge(scenario, traces.get(1));
-            CrossWorldVerdict isolation = judge.judgeIsolation(
-                    traces.get(0), traces.get(1), firstVerdict, secondVerdict);
+        judge = new IndependentJudge();
+        firstVerdict = judge.judge(scenario, traces.get(0));
+        secondVerdict = judge.judge(scenario, traces.get(1));
+        isolation = judge.judgeIsolation(
+                traces.get(0), traces.get(1), firstVerdict, secondVerdict);
 
-            boolean qualified = firstVerdict.qualified()
-                    && secondVerdict.qualified()
-                    && isolation.qualified();
-            QualificationReport report = new QualificationReport(
-                    Instant.now().toString(),
-                    "S0-S6 / MYSQL_BASELINE",
-                    qualified ? "QUALIFIED" : "NOT_QUALIFIED",
-                    scenario.definition().scenarioId(),
-                    scenario.definition().version(),
-                    scenario.sha256(),
-                    "Correctness evidence for the frozen S0-S6 script on MySQL 8.4.13; "
-                            + "not a production capacity or high-concurrency throughput claim.",
-                    environment(mysql, connections),
-                    List.of(
-                            new StrategySlot("MYSQL_BASELINE", qualified ? "QUALIFIED" : "NOT_QUALIFIED"),
-                            new StrategySlot("CHECKLIST_STACK", "NOT_IMPLEMENTED"),
-                            new StrategySlot("EVIDENCE_DRIVEN", "NOT_IMPLEMENTED"),
-                            new StrategySlot("ACADEMIC", "NOT_IMPLEMENTED")),
-                    List.of(
-                            new WorldEvidence(traces.get(0), firstVerdict),
-                            new WorldEvidence(traces.get(1), secondVerdict)),
-                    isolation);
+        boolean qualified = firstVerdict.qualified()
+                && secondVerdict.qualified()
+                && isolation.qualified();
+        report = new QualificationReport(
+                Instant.now().toString(),
+                "S0-S6 / MYSQL_BASELINE",
+                qualified ? "QUALIFIED" : "NOT_QUALIFIED",
+                scenario.definition().scenarioId(),
+                scenario.definition().version(),
+                scenario.sha256(),
+                "Correctness evidence for the frozen S0-S6 script on MySQL 8.4.13; "
+                        + "not a production capacity or high-concurrency throughput claim.",
+                environment(mysql, connections),
+                List.of(
+                        new StrategySlot("MYSQL_BASELINE", qualified ? "QUALIFIED" : "NOT_QUALIFIED"),
+                        new StrategySlot("CHECKLIST_STACK", "NOT_IMPLEMENTED"),
+                        new StrategySlot("EVIDENCE_DRIVEN", "NOT_IMPLEMENTED"),
+                        new StrategySlot("ACADEMIC", "NOT_IMPLEMENTED")),
+                List.of(
+                        new WorldEvidence(traces.get(0), firstVerdict),
+                        new WorldEvidence(traces.get(1), secondVerdict)),
+                isolation);
 
-            Path output = Path.of(System.getProperty("qualification.output", "target/qualification"));
-            new ReportWriter().write(output, scenario, report);
-            TerminalReport.print(report);
+        Path output = Path.of(System.getProperty("qualification.output", "target/qualification"));
+        new ReportWriter().write(output, scenario, report);
+        TerminalReport.print(report);
+    }
 
-            assertTrue(firstVerdict.qualified(), () -> "first world: " + firstVerdict.checks());
-            assertTrue(secondVerdict.qualified(), () -> "second world: " + secondVerdict.checks());
-            assertTrue(isolation.qualified(), () -> "isolation: " + isolation.checks());
-            assertEquals("QUALIFIED", report.status());
+    @AfterAll
+    void stopMysql() {
+        if (mysql != null) {
+            mysql.stop();
         }
+    }
+
+    @Test
+    void qualifiesMysqlBaselineAgainstFrozenS0ToS6Script() {
+        assertTrue(firstVerdict.qualified(), () -> "first world: " + firstVerdict.checks());
+        assertTrue(secondVerdict.qualified(), () -> "second world: " + secondVerdict.checks());
+        assertTrue(isolation.qualified(), () -> "isolation: " + isolation.checks());
+        assertEquals("QUALIFIED", report.status());
+    }
+
+    @Test
+    void rejectsConflictResponseWithFalseLikedStateEvenWhenDatabaseFactsAreCorrect() {
+        ScenarioTrace tampered = tamperConflictResponse(
+                traces.get(0), response -> copyWith(response, false, response.countAfter()));
+
+        WorldVerdict verdict = judge.judge(scenario, tampered);
+
+        assertFalse(verdict.qualified());
+        assertFalse(verdict.checks().get("request-conflict").passed());
+        assertTrue(verdict.checks().get("response-delivery-boundary").passed());
+        assertEquals(traces.get(0).finalSnapshot(), tampered.finalSnapshot());
+    }
+
+    @Test
+    void rejectsConflictResponseWithInventedCountEvenWhenDatabaseFactsAreCorrect() {
+        ScenarioTrace tampered = tamperConflictResponse(
+                traces.get(0), response -> copyWith(response, response.likedAfter(), 999));
+
+        WorldVerdict verdict = judge.judge(scenario, tampered);
+
+        assertFalse(verdict.qualified());
+        assertFalse(verdict.checks().get("request-conflict").passed());
+        assertTrue(verdict.checks().get("response-delivery-boundary").passed());
+        assertEquals(traces.get(0).finalSnapshot(), tampered.finalSnapshot());
+    }
+
+    private static ScenarioTrace tamperConflictResponse(
+            ScenarioTrace original,
+            UnaryOperator<BusinessResponse> tamper
+    ) {
+        List<StepTrace> steps = original.steps().stream()
+                .map(step -> step.stepId().equals("S1") ? tamperConflictAttempt(step, tamper) : step)
+                .toList();
+        return new ScenarioTrace(
+                original.coordinate(),
+                original.scenarioId(),
+                original.scenarioSha256(),
+                original.startedAt(),
+                original.completedAt(),
+                steps,
+                original.finalSnapshot());
+    }
+
+    private static StepTrace tamperConflictAttempt(
+            StepTrace original,
+            UnaryOperator<BusinessResponse> tamper
+    ) {
+        List<AttemptTrace> attempts = original.attempts().stream()
+                .map(attempt -> attempt.label().equals("same-id-different-operation")
+                        ? tamperDeliveredResponse(attempt, tamper)
+                        : attempt)
+                .toList();
+        return new StepTrace(
+                original.stepId(),
+                original.kind(),
+                original.applicationRestarted(),
+                attempts,
+                original.snapshotAfter());
+    }
+
+    private static AttemptTrace tamperDeliveredResponse(
+            AttemptTrace original,
+            UnaryOperator<BusinessResponse> tamper
+    ) {
+        BusinessResponse response = tamper.apply(original.clientResponse());
+        return new AttemptTrace(
+                original.label(),
+                original.applicationGeneration(),
+                original.processId(),
+                original.processExitCode(),
+                original.completionOrder(),
+                original.startedAt(),
+                original.completedAt(),
+                original.command(),
+                response,
+                response,
+                original.delivery());
+    }
+
+    private static BusinessResponse copyWith(
+            BusinessResponse original,
+            boolean likedAfter,
+            long countAfter
+    ) {
+        return new BusinessResponse(
+                original.requestId(),
+                original.decision(),
+                original.effect(),
+                likedAfter,
+                countAfter,
+                original.reason(),
+                original.replayed());
     }
 
     private static List<ScenarioTrace> runWorldsInParallel(
             LoadedScenario scenario,
             WorldFactory worldFactory,
+            ApplicationProcessExecutor processExecutor,
             WorldCoordinate first,
             WorldCoordinate second
     ) throws Exception {
@@ -121,9 +247,9 @@ class MysqlBaselineQualificationTest {
         CountDownLatch start = new CountDownLatch(1);
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             Future<ScenarioTrace> firstRun = executor.submit(() -> runAfterBarrier(
-                    scenario, worldFactory, first, ready, start));
+                    scenario, worldFactory, processExecutor, first, ready, start));
             Future<ScenarioTrace> secondRun = executor.submit(() -> runAfterBarrier(
-                    scenario, worldFactory, second, ready, start));
+                    scenario, worldFactory, processExecutor, second, ready, start));
             assertTrue(ready.await(30, TimeUnit.SECONDS), "both worlds must reach the replay barrier");
             start.countDown();
             return List.of(firstRun.get(), secondRun.get());
@@ -133,6 +259,7 @@ class MysqlBaselineQualificationTest {
     private static ScenarioTrace runAfterBarrier(
             LoadedScenario scenario,
             WorldFactory worldFactory,
+            ApplicationProcessExecutor processExecutor,
             WorldCoordinate coordinate,
             CountDownLatch ready,
             CountDownLatch start
@@ -141,7 +268,7 @@ class MysqlBaselineQualificationTest {
         if (!start.await(30, TimeUnit.SECONDS)) {
             throw new IllegalStateException("world replay barrier timed out");
         }
-        return new ScenarioRunner(scenario, worldFactory).run(coordinate);
+        return new ScenarioRunner(scenario, worldFactory, processExecutor).run(coordinate);
     }
 
     private static EnvironmentEvidence environment(

@@ -28,11 +28,18 @@ public final class ScenarioRunner {
 
     private final LoadedScenario scenario;
     private final WorldFactory worlds;
+    private final ApplicationProcessExecutor processes;
+    private final ResponseDeliveryBoundary deliveryBoundary = new ResponseDeliveryBoundary();
     private final AtomicLong completionOrder = new AtomicLong();
 
-    public ScenarioRunner(LoadedScenario scenario, WorldFactory worlds) {
+    public ScenarioRunner(
+            LoadedScenario scenario,
+            WorldFactory worlds,
+            ApplicationProcessExecutor processes
+    ) {
         this.scenario = scenario;
         this.worlds = worlds;
+        this.processes = processes;
     }
 
     public ScenarioTrace run(WorldCoordinate coordinate) {
@@ -128,15 +135,18 @@ public final class ScenarioRunner {
             int generation
     ) {
         LikeCommand command = command(step.requestId(), step.userId(), step.operation());
-        AttemptTrace lost = apply(
-                "committed-response-lost", generation, command, oldWorld, Delivery.LOST_AFTER_COMMIT);
-
         oldWorld.close();
+        ProcessExecution firstProcess = processes.execute(coordinate, scenario, command);
+        AttemptTrace lost = fromProcess(
+                "committed-response-lost", generation, command, firstProcess, Delivery.LOST_AFTER_COMMIT);
+
+        int restartedGeneration = generation + 1;
+        ProcessExecution secondProcess = processes.execute(coordinate, scenario, command);
+        AttemptTrace retry = fromProcess(
+                "retry-after-restart", restartedGeneration, command, secondProcess, Delivery.DELIVERED);
+
         LikeWorld restartedWorld = worlds.open(coordinate, scenario);
         restartedWorld.initialize();
-        int restartedGeneration = generation + 1;
-        AttemptTrace retry = apply(
-                "retry-after-restart", restartedGeneration, command, restartedWorld, Delivery.DELIVERED);
 
         StepTrace trace = new StepTrace(
                 step.id(),
@@ -196,16 +206,42 @@ public final class ScenarioRunner {
             Delivery delivery
     ) {
         String startedAt = Instant.now().toString();
-        BusinessResponse response = world.apply(command);
+        BusinessResponse systemResponse = world.apply(command);
+        ResponseDeliveryBoundary.DeliveryOutcome outcome = deliveryBoundary.pass(systemResponse, delivery);
         return new AttemptTrace(
                 label,
                 generation,
+                ProcessHandle.current().pid(),
+                null,
                 completionOrder.incrementAndGet(),
                 startedAt,
                 Instant.now().toString(),
                 command,
-                response,
-                delivery);
+                outcome.systemResponse(),
+                outcome.clientResponse(),
+                outcome.delivery());
+    }
+
+    private AttemptTrace fromProcess(
+            String label,
+            int generation,
+            LikeCommand command,
+            ProcessExecution execution,
+            Delivery delivery
+    ) {
+        ResponseDeliveryBoundary.DeliveryOutcome outcome = deliveryBoundary.pass(execution.response(), delivery);
+        return new AttemptTrace(
+                label,
+                generation,
+                execution.processId(),
+                execution.exitCode(),
+                completionOrder.incrementAndGet(),
+                execution.startedAt(),
+                execution.exitedAt(),
+                command,
+                outcome.systemResponse(),
+                outcome.clientResponse(),
+                outcome.delivery());
     }
 
     private LikeCommand command(String requestId, String userId, Operation operation) {

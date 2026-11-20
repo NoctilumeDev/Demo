@@ -30,6 +30,7 @@ public final class IndependentJudge {
         checks.put("request-replay", checkRequestReplay(trace));
         checks.put("request-conflict", checkRequestConflict(trace));
         checks.put("concurrent-state-transition", checkConcurrentTransition(trace));
+        checks.put("response-delivery-boundary", checkResponseDeliveryBoundary(trace));
         checks.put("response-loss-and-restart", checkResponseLossAndRestart(trace));
         checks.put("request-records-terminal", checkTerminalRecords(trace.finalSnapshot()));
         checks.put("independent-count-invariant", checkCountInvariant(scenario, trace.finalSnapshot()));
@@ -106,21 +107,26 @@ public final class IndependentJudge {
             }
 
             long applied = observed.attempts().stream()
-                    .filter(attempt -> attempt.response().decision() == Decision.APPLIED)
+                    .map(IndependentJudge::observedResponse)
+                    .filter(response -> response.decision() == Decision.APPLIED)
                     .count();
             long rejected = observed.attempts().stream()
-                    .filter(attempt -> attempt.response().decision() == Decision.REJECTED)
+                    .map(IndependentJudge::observedResponse)
+                    .filter(response -> response.decision() == Decision.REJECTED)
                     .count();
             long stateChanges = observed.attempts().stream()
-                    .filter(attempt -> !attempt.response().replayed())
-                    .filter(attempt -> attempt.response().effect() == Effect.STATE_CHANGED)
+                    .map(IndependentJudge::observedResponse)
+                    .filter(response -> !response.replayed())
+                    .filter(response -> response.effect() == Effect.STATE_CHANGED)
                     .count();
             long noChanges = observed.attempts().stream()
-                    .filter(attempt -> !attempt.response().replayed())
-                    .filter(attempt -> attempt.response().effect() == Effect.NO_CHANGE)
+                    .map(IndependentJudge::observedResponse)
+                    .filter(response -> !response.replayed())
+                    .filter(response -> response.effect() == Effect.NO_CHANGE)
                     .count();
             long replayed = observed.attempts().stream()
-                    .filter(attempt -> attempt.response().replayed())
+                    .map(IndependentJudge::observedResponse)
+                    .filter(BusinessResponse::replayed)
                     .count();
 
             if (observed.snapshotAfter().count(workId) != expected.countAfter()) {
@@ -149,9 +155,11 @@ public final class IndependentJudge {
         if (step.attempts().size() != 3) {
             return CheckResult.fail("S1 did not retain three attempts");
         }
-        BusinessResponse primary = step.attempts().get(0).response();
-        BusinessResponse replay = step.attempts().get(1).response();
-        boolean passed = primary.sameBusinessResult(replay)
+        BusinessResponse primary = step.attempts().get(0).clientResponse();
+        BusinessResponse replay = step.attempts().get(1).clientResponse();
+        boolean passed = primary != null
+                && replay != null
+                && primary.sameBusinessResult(replay)
                 && !primary.replayed()
                 && replay.replayed()
                 && primary.decision() == Decision.APPLIED
@@ -166,10 +174,14 @@ public final class IndependentJudge {
                 .filter(record -> record.requestId().equals("R001"))
                 .findFirst()
                 .orElse(null);
-        boolean passed = conflict.response().decision() == Decision.REJECTED
-                && conflict.response().effect() == Effect.NO_CHANGE
-                && conflict.response().reason() == ResponseReason.REQUEST_ID_CONFLICT
-                && !conflict.response().replayed()
+        BusinessResponse response = conflict.clientResponse();
+        boolean passed = response != null
+                && response.decision() == Decision.REJECTED
+                && response.effect() == Effect.NO_CHANGE
+                && response.reason() == ResponseReason.REQUEST_ID_CONFLICT
+                && response.likedAfter()
+                && response.countAfter() == 1
+                && !response.replayed()
                 && retained != null
                 && retained.operation() == Operation.LIKE
                 && retained.decision() == Decision.APPLIED
@@ -186,7 +198,11 @@ public final class IndependentJudge {
         long unchanged = 0;
         for (AttemptTrace attempt : step.attempts()) {
             requestIds.add(attempt.command().requestId());
-            if (attempt.response().effect() == Effect.STATE_CHANGED) {
+            BusinessResponse response = attempt.clientResponse();
+            if (response == null) {
+                return CheckResult.fail("a concurrent request did not reach the simulated client");
+            }
+            if (response.effect() == Effect.STATE_CHANGED) {
                 changed++;
             } else {
                 unchanged++;
@@ -196,10 +212,29 @@ public final class IndependentJudge {
                 && requestIds.size() == 100
                 && changed == 1
                 && unchanged == 99
-                && step.attempts().stream().allMatch(attempt -> attempt.response().decision() == Decision.APPLIED)
+                && step.attempts().stream()
+                        .allMatch(attempt -> attempt.clientResponse().decision() == Decision.APPLIED)
                 && step.snapshotAfter().liked(1, "D")
                 && step.snapshotAfter().count(1) == 2;
         return result(passed, "100 distinct concurrent requests produced one 0->1 transition and 99 no-ops");
+    }
+
+    private CheckResult checkResponseDeliveryBoundary(ScenarioTrace trace) {
+        long lost = 0;
+        for (StepTrace step : trace.steps()) {
+            for (AttemptTrace attempt : step.attempts()) {
+                if (attempt.delivery() == Delivery.LOST_AFTER_COMMIT) {
+                    lost++;
+                    if (attempt.systemResponse() == null || attempt.clientResponse() != null) {
+                        return CheckResult.fail("lost response crossed the client delivery boundary");
+                    }
+                } else if (attempt.clientResponse() == null
+                        || !attempt.systemResponse().equals(attempt.clientResponse())) {
+                    return CheckResult.fail("delivered response differs across the client boundary");
+                }
+            }
+        }
+        return result(lost == 1, "exactly one committed response was withheld from the simulated client");
     }
 
     private CheckResult checkResponseLossAndRestart(ScenarioTrace trace) {
@@ -209,16 +244,27 @@ public final class IndependentJudge {
         }
         AttemptTrace lost = step.attempts().get(0);
         AttemptTrace retry = step.attempts().get(1);
+        BusinessResponse lostSystemResponse = lost.systemResponse();
+        BusinessResponse retryClientResponse = retry.clientResponse();
         boolean passed = step.applicationRestarted()
                 && lost.delivery() == Delivery.LOST_AFTER_COMMIT
                 && retry.delivery() == Delivery.DELIVERED
                 && retry.applicationGeneration() > lost.applicationGeneration()
-                && lost.response().sameBusinessResult(retry.response())
-                && !lost.response().replayed()
-                && retry.response().replayed()
+                && lost.processId() != retry.processId()
+                && lost.processExitCode() != null && lost.processExitCode() == 0
+                && retry.processExitCode() != null && retry.processExitCode() == 0
+                && lost.clientResponse() == null
+                && lostSystemResponse != null
+                && retryClientResponse != null
+                && lostSystemResponse.sameBusinessResult(retryClientResponse)
+                && !lostSystemResponse.replayed()
+                && retryClientResponse.replayed()
                 && step.snapshotAfter().count(1) == 3
                 && !step.snapshotAfter().liked(1, "B");
-        return result(passed, "committed result survived response loss and a new application instance");
+        return result(
+                passed,
+                "committed result survived response loss and process restart: pid "
+                        + lost.processId() + " -> " + retry.processId());
     }
 
     private CheckResult checkTerminalRecords(WorldSnapshot snapshot) {
@@ -262,6 +308,10 @@ public final class IndependentJudge {
                         + "|" + attempt.command().operation())
                 .sorted()
                 .toList();
+    }
+
+    private static BusinessResponse observedResponse(AttemptTrace attempt) {
+        return attempt.clientResponse() != null ? attempt.clientResponse() : attempt.systemResponse();
     }
 
     private static List<String> normalizedStoredInputs(WorldSnapshot snapshot) {

@@ -6,11 +6,14 @@ import dev.noctilume.demo.eyeopener.contract.LikeCommand;
 public record AttemptTrace(
         String label,
         int applicationGeneration,
+        long processId,
+        Integer processExitCode,
         long completionOrder,
         String startedAt,
         String completedAt,
         LikeCommand command,
-        BusinessResponse response,
+        BusinessResponse systemResponse,
+        BusinessResponse clientResponse,
         Delivery delivery
 ) {
 }
