@@ -1,0 +1,3 @@
+games/interviewer-eye-opener/src/main/resources/scenarios/*.json text eol=lf
+games/interviewer-eye-opener/src/main/resources/scenarios/*.sha256 text eol=lf
+.github/workflows/*.yml text eol=lf

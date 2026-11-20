@@ -1,0 +1,121 @@
+{
+  "scenarioId": "S0-S6",
+  "version": "1.0.0",
+  "workId": 1,
+  "initialUsers": ["A", "B", "C", "D"],
+  "steps": [
+    {
+      "id": "S0",
+      "kind": "INITIALIZE",
+      "expected": {
+        "countAfter": 0,
+        "responsesApplied": 0,
+        "responsesRejected": 0,
+        "newStateChanges": 0,
+        "newNoChanges": 0,
+        "replayedResponses": 0,
+        "liked": {"A": false, "B": false, "C": false, "D": false}
+      }
+    },
+    {
+      "id": "S1",
+      "kind": "REQUEST_REPLAY_AND_CONFLICT",
+      "requestId": "R001",
+      "userId": "A",
+      "operation": "LIKE",
+      "conflictOperation": "UNLIKE",
+      "expected": {
+        "countAfter": 1,
+        "responsesApplied": 2,
+        "responsesRejected": 1,
+        "newStateChanges": 1,
+        "newNoChanges": 1,
+        "replayedResponses": 1,
+        "liked": {"A": true}
+      }
+    },
+    {
+      "id": "S2",
+      "kind": "CONCURRENT_SAME_USER",
+      "requestIdPrefix": "R002-",
+      "userId": "D",
+      "operation": "LIKE",
+      "attempts": 100,
+      "expected": {
+        "countAfter": 2,
+        "responsesApplied": 100,
+        "responsesRejected": 0,
+        "newStateChanges": 1,
+        "newNoChanges": 99,
+        "replayedResponses": 0,
+        "liked": {"D": true}
+      }
+    },
+    {
+      "id": "S3",
+      "kind": "CONCURRENT_USERS",
+      "requests": [
+        {"requestId": "R103-B", "userId": "B", "operation": "LIKE"},
+        {"requestId": "R103-C", "userId": "C", "operation": "LIKE"}
+      ],
+      "expected": {
+        "countAfter": 4,
+        "responsesApplied": 2,
+        "responsesRejected": 0,
+        "newStateChanges": 2,
+        "newNoChanges": 0,
+        "replayedResponses": 0,
+        "liked": {"B": true, "C": true}
+      }
+    },
+    {
+      "id": "S4",
+      "kind": "APPLY_AND_RETRY",
+      "requestId": "R104-A-CANCEL",
+      "userId": "A",
+      "operation": "UNLIKE",
+      "expected": {
+        "countAfter": 3,
+        "responsesApplied": 2,
+        "responsesRejected": 0,
+        "newStateChanges": 1,
+        "newNoChanges": 0,
+        "replayedResponses": 1,
+        "liked": {"A": false}
+      }
+    },
+    {
+      "id": "S5",
+      "kind": "APPLY_ONCE",
+      "requestId": "R105-A-LIKE",
+      "userId": "A",
+      "operation": "LIKE",
+      "expected": {
+        "countAfter": 4,
+        "responsesApplied": 1,
+        "responsesRejected": 0,
+        "newStateChanges": 1,
+        "newNoChanges": 0,
+        "replayedResponses": 0,
+        "liked": {"A": true}
+      }
+    },
+    {
+      "id": "S6",
+      "kind": "RESPONSE_LOSS_RESTART_RETRY",
+      "requestId": "R106-B-CANCEL",
+      "userId": "B",
+      "operation": "UNLIKE",
+      "fault": "DROP_RESPONSE_AFTER_COMMIT",
+      "expected": {
+        "countAfter": 3,
+        "responsesApplied": 2,
+        "responsesRejected": 0,
+        "newStateChanges": 1,
+        "newNoChanges": 0,
+        "replayedResponses": 1,
+        "liked": {"B": false}
+      }
+    }
+  ]
+}
