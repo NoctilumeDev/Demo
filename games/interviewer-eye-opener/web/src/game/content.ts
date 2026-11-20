@@ -1,0 +1,277 @@
+import type { FactionDefinition, IncidentDefinition } from "./types";
+
+export const FACTIONS: FactionDefinition[] = [
+  {
+    id: "simple",
+    name: "朴素派",
+    shortName: "先做对",
+    motto: "先把业务做对。",
+    description: "优先相信数据库约束和最短调用链。组件少，成本低；容量真的不够时，也得承认机器有边界。",
+    scoreName: "克制指数",
+    accent: "#66d9a5",
+    initialBudget: 100,
+    initialTime: 15,
+    initialComponents: ["MySQL"],
+  },
+  {
+    id: "buzzword",
+    name: "八股派",
+    shortName: "先上组件",
+    motto: "面试官眼前一亮哒。",
+    description: "Redis、MQ、网关先就位。它们可以真的解决问题，也会把自己的故障路径一起带进来。",
+    scoreName: "架构亮度",
+    accent: "#ff8f70",
+    initialBudget: 72,
+    initialTime: 15,
+    initialComponents: ["MySQL", "Redis", "MQ", "Gateway"],
+  },
+  {
+    id: "engineering",
+    name: "工程派",
+    shortName: "先拿证据",
+    motto: "瓶颈证据拿来。",
+    description: "先测，再改，再重放。实验会提高判断力，也会消耗真实的时间和预算。",
+    scoreName: "证据完整度",
+    accent: "#62c7ff",
+    initialBudget: 88,
+    initialTime: 17,
+    initialComponents: ["MySQL", "Metrics", "Load rig"],
+  },
+  {
+    id: "academic",
+    name: "学院派",
+    shortName: "先看大纲",
+    motto: "这个不在考核范围内。",
+    description: "可以调整课程验收范围，不能修改底层事实。课程分数和业务裁决是两本账。",
+    scoreName: "课程成绩",
+    accent: "#be9cff",
+    initialBudget: 95,
+    initialTime: 15,
+    initialComponents: ["MySQL", "Report builder"],
+  },
+  {
+    id: "training",
+    name: "培训派",
+    shortName: "永远差一课",
+    motto: "这个你也得学，不然企业不要你。",
+    description: "课程标签不断增加，满分线不断移动。真实就业能力只由陌生任务决定。",
+    scoreName: "就业竞争力",
+    accent: "#ffd166",
+    initialBudget: 92,
+    initialTime: 16,
+    initialComponents: ["MySQL", "Course platform"],
+  },
+];
+
+export const INCIDENTS: IncidentDefinition[] = [
+  {
+    id: "duplicate-like",
+    chapter: "事故 01",
+    title: "同一个人点了一百次",
+    brief: "D 还没点赞。现在 100 个不同请求同时冲向同一件作品。",
+    signal: "计数器在一瞬间跳动。每个请求都说自己成功了。",
+    question: "你准备靠什么守住一次 0 → 1？",
+    decisions: [
+      {
+        id: "db-unique",
+        incidentId: "duplicate-like",
+        title: "让数据库守住唯一状态",
+        description: "使用唯一业务键和条件更新。先不引入新组件。",
+        cost: 8,
+        time: 1,
+        tags: ["database", "correctness"],
+      },
+      {
+        id: "redis-idempotency",
+        incidentId: "duplicate-like",
+        title: "用 Redis 抢第一把锁",
+        description: "请求先在 Redis 去重，再写数据库。吞吐好看，但多出一条恢复路径。",
+        cost: 14,
+        time: 2,
+        tags: ["component", "redis", "correctness"],
+      },
+      {
+        id: "count-every-request",
+        incidentId: "duplicate-like",
+        title: "每来一次就加一",
+        description: "实现最快。至于同一个人为什么贡献了 100 个赞，先上线再研究。",
+        cost: 2,
+        time: 0,
+        tags: ["shortcut"],
+      },
+    ],
+  },
+  {
+    id: "response-loss",
+    chapter: "事故 02",
+    title: "成功响应丢在路上",
+    brief: "B 的取消已经提交，客户端没收到响应，于是用同一个请求 ID 重试。",
+    signal: "用户只知道页面转圈。系统必须知道刚才那次到底做没做。",
+    question: "第二次请求到来时，你拿什么回答？",
+    decisions: [
+      {
+        id: "transactional-request-record",
+        incidentId: "response-loss",
+        title: "请求记录和业务状态一起提交",
+        description: "重试时恢复第一次的确定结果，不重新猜一遍。",
+        cost: 11,
+        time: 2,
+        tags: ["database", "evidence", "correctness"],
+      },
+      {
+        id: "blind-retry",
+        incidentId: "response-loss",
+        title: "再执行一次应该也没事",
+        description: "如果最终数值碰巧正确，就把它当成恢复成功。",
+        cost: 3,
+        time: 0,
+        tags: ["shortcut"],
+      },
+      {
+        id: "async-ack",
+        incidentId: "response-loss",
+        title: "先回成功，再扔给 MQ",
+        description: "响应很快。消息进入可靠存储以前发生什么，暂时不问。",
+        cost: 10,
+        time: 1,
+        tags: ["component", "mq"],
+      },
+    ],
+  },
+  {
+    id: "message-outage",
+    chapter: "事故 03",
+    title: "MQ 在关键一刻断了",
+    brief: "系统已经准备接受操作，消息发布失败。你刚才对用户作出的承诺还在。",
+    signal: "Redis 里亮着绿灯，数据库里没有这次操作。",
+    question: "现有事实还能不能恢复？",
+    decisions: [
+      {
+        id: "database-fallback",
+        incidentId: "message-outage",
+        title: "退回数据库原子路径",
+        description: "高峰之外先保证事实落地，通知稍后再说。",
+        cost: 9,
+        time: 2,
+        tags: ["database", "correctness"],
+      },
+      {
+        id: "outbox-consumer",
+        incidentId: "message-outage",
+        title: "Outbox + 幂等消费",
+        description: "把可靠事件和业务提交绑在一起，同时承担重复投递与顺序处理。",
+        cost: 20,
+        time: 3,
+        tags: ["component", "mq", "evidence", "correctness"],
+      },
+      {
+        id: "scheduled-reconciliation",
+        incidentId: "message-outage",
+        title: "加一个定时对账",
+        description: "任务会准时运行。权威数据源以后再定。",
+        cost: 7,
+        time: 1,
+        tags: ["unknown"],
+      },
+      {
+        id: "ignore-message-loss",
+        incidentId: "message-outage",
+        title: "本次暂不讨论",
+        description: "把红灯从当前页面移走。底层事实保持原样。",
+        cost: 1,
+        time: 0,
+        tags: ["scope"],
+      },
+    ],
+  },
+  {
+    id: "traffic-spike",
+    chapter: "事故 04",
+    title: "流量终于真的来了",
+    brief: "固定预算下，请求速率逐步升高。系统要处理 120 个有效请求。",
+    signal: "P95 延迟上升，连接池开始排队。",
+    question: "这次是扩容、加缓存，还是把用户挡在门外？",
+    decisions: [
+      {
+        id: "measure-and-scale",
+        incidentId: "traffic-spike",
+        title: "先压测，再扩数据库",
+        description: "保存基线，确认瓶颈，再增加能够解释的容量。",
+        cost: 17,
+        time: 3,
+        tags: ["database", "evidence", "capacity"],
+      },
+      {
+        id: "cache-with-invalidation",
+        incidentId: "traffic-spike",
+        title: "缓存读取，并补上失效规则",
+        description: "Redis 真正带来吞吐收益，同时把更新路径一起实现。",
+        cost: 22,
+        time: 3,
+        tags: ["component", "redis", "evidence", "capacity"],
+      },
+      {
+        id: "reject-everything",
+        incidentId: "traffic-spike",
+        title: "全部拒绝，保护正确性",
+        description: "系统没有写错任何数据，因为一个请求也没进去。",
+        cost: 2,
+        time: 0,
+        tags: ["shortcut"],
+      },
+    ],
+  },
+  {
+    id: "duplicate-charge",
+    chapter: "陌生任务",
+    title: "用户偶尔被扣两次钱",
+    brief: "这不是点赞，也不是课程里的物流管理。偶发重试让同一笔业务扣款两次。",
+    signal: "日志里有两个请求 ID，却指向同一个业务订单。",
+    question: "你能不能复现、归因、修复，并证明下一种相邻重试也不会再扣？",
+    decisions: [
+      {
+        id: "payment-idempotency",
+        incidentId: "duplicate-charge",
+        title: "复现，再建立扣款幂等记录",
+        description: "先固定反例，再用业务键保存确定结果，最后重放邻近场景。",
+        cost: 12,
+        time: 3,
+        tags: ["evidence", "correctness", "transfer"],
+      },
+      {
+        id: "sql-business-key",
+        incidentId: "duplicate-charge",
+        title: "只用 SQL，也把证据做全",
+        description: "唯一业务键、事务和反例重放。技术少，不等于证明少。",
+        cost: 9,
+        time: 2,
+        tags: ["database", "evidence", "correctness", "transfer"],
+      },
+      {
+        id: "retry-payment",
+        incidentId: "duplicate-charge",
+        title: "失败就继续重试",
+        description: "把偶发问题变成稳定复现，至少第一步做到了。",
+        cost: 2,
+        time: 0,
+        tags: ["shortcut"],
+      },
+    ],
+  },
+];
+
+export const factionById = (id: FactionDefinition["id"]): FactionDefinition => {
+  const faction = FACTIONS.find((candidate) => candidate.id === id);
+  if (!faction) {
+    throw new Error(`Unknown faction: ${id}`);
+  }
+  return faction;
+};
+
+export const incidentById = (id: IncidentDefinition["id"]): IncidentDefinition => {
+  const incident = INCIDENTS.find((candidate) => candidate.id === id);
+  if (!incident) {
+    throw new Error(`Unknown incident: ${id}`);
+  }
+  return incident;
+};
