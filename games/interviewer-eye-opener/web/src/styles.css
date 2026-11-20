@@ -365,7 +365,18 @@ main { width: min(1500px, 100%); margin: 0 auto; }
 .evidence-box { margin: 1rem 0 1.3rem; border: 1px solid #2d3b47; border-radius: 0.4rem; }
 .evidence-box summary { padding: 0.85rem 1rem; cursor: pointer; font-weight: 800; }
 .evidence-box ul { margin: 0; padding: 0 2.4rem 1rem; color: var(--muted); line-height: 1.7; }
-.scope-warning { color: #d4bcff; }
+.scope-warning {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #8065a7;
+  border-radius: 0.45rem;
+  color: #d4bcff;
+  background: #1d1828;
+}
+.scope-warning span { color: #b8a9cf; }
+.scope-warning b { color: var(--red); }
 .academic-button { border-color: #8065a7; }
 
 .timeline-panel { margin-top: 1rem; overflow: hidden; }
@@ -384,6 +395,15 @@ main { width: min(1500px, 100%); margin: 0 auto; }
 .settlement__hero { padding: 2rem 0 3rem; border-bottom: 1px solid var(--line); }
 .settlement__hero h1 { font-size: clamp(3.5rem, 8vw, 8rem); }
 .settlement__hero h1 em { font-style: normal; }
+.settlement-status {
+  display: inline-block;
+  margin-top: 0.2em;
+  font: inherit;
+  letter-spacing: -0.04em;
+}
+.settlement-status--pass { color: var(--green); }
+.settlement-status--fail { color: var(--red); }
+.settlement-status--unknown { color: var(--amber); }
 .settlement__hero > p:last-child { color: var(--muted); font-size: 1.1rem; }
 .settlement-ledgers, .career-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; margin: 1rem 0 3rem; }
 .settlement-ledgers article, .career-stats article { padding: 1.4rem; border: 1px solid var(--line); border-radius: 0.5rem; background: var(--panel); }
@@ -406,6 +426,29 @@ main { width: min(1500px, 100%); margin: 0 auto; }
 .achievement-card p, .achievement-card small { color: var(--muted); line-height: 1.55; }
 .achievement-card small { display: block; font-size: 0.75rem; }
 .empty-state { padding: 1.5rem; border: 1px dashed #485661; color: var(--muted); }
+
+.restart-dialog {
+  width: min(34rem, calc(100vw - 2rem));
+  padding: 1.6rem;
+  border: 1px solid #6d7c88;
+  border-radius: 0.7rem;
+  color: var(--paper);
+  background: #111920;
+  box-shadow: 0 2rem 6rem #000c;
+}
+.restart-dialog::backdrop { background: #020508cc; backdrop-filter: blur(4px); }
+.restart-dialog h2 { margin: 0; font: 850 2rem ui-serif, serif; }
+.restart-dialog > p:not(.eyebrow) { color: var(--muted); line-height: 1.7; }
+.restart-dialog__actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.4rem; }
+.danger-button {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--red);
+  border-radius: 0.45rem;
+  color: #ffd0cd;
+  background: #351517;
+  cursor: pointer;
+}
+.danger-button:hover { background: #4a1b1e; }
 
 .career-stats { margin-top: 0; }
 .career-section { margin: 2.5rem 0; border: 1px solid var(--line); border-radius: 0.65rem; overflow: hidden; background: var(--panel); }

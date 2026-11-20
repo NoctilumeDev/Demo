@@ -41,8 +41,10 @@ export const calculateFactionScore = (
       };
     }
     case "academic": {
+      const executed = new Set(run.attempts.map((attempt) => attempt.incidentId));
       const included = verdict.checks.filter(
-        (check) => !run.excludedFromCourse.includes(check.incidentId),
+        (check) => executed.has(check.incidentId)
+          && !run.excludedFromCourse.includes(check.incidentId),
       );
       const passed = included.filter((check) => check.status === "PASS").length;
       const value = included.length === 0 ? 100 : Math.round((passed / included.length) * 100);
@@ -50,7 +52,7 @@ export const calculateFactionScore = (
         label: faction.scoreName,
         value,
         maximum: 100,
-        note: `${run.excludedFromCourse.length} 项未纳入课程验收；业务裁决没有随之变化。`,
+        note: `有效考核 ${included.length} 项，已排除 ${run.excludedFromCourse.length} 项；业务裁决没有随之变化。`,
       };
     }
     case "training": {

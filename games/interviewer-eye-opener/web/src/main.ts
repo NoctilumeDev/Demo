@@ -42,6 +42,8 @@ let career: CareerState = loadCareer(window.localStorage);
 let run: GameRun | undefined = loadActiveRun(window.localStorage);
 let screen: Screen = run ? "GAME" : "HOME";
 let notice = "";
+let restartRequested = false;
+let restartTriggerAction: "start" | "new-run" = "start";
 
 const statusLabel = (status: VerdictStatus): string => ({
   PASS: "通过",
@@ -86,17 +88,17 @@ const formatFact = (key: string, value: FactValue): string => {
 const renderShell = (content: string): string => `
   <div class="app-shell">
     <header class="topbar">
-      <button class="brand" data-action="home" aria-label="返回游戏首页">
+      <button class="brand" data-action="home" data-testid="home-nav" aria-label="返回游戏首页">
         <span class="brand__alarm">ALARM</span>
         <span>面试官眼前一亮</span>
       </button>
       <div class="topbar__meta">
         <span class="simulation-badge">确定性游戏仿真</span>
-        <button class="text-button" data-action="career">生涯档案</button>
+        <button class="text-button" data-action="career" data-testid="career-nav">生涯档案</button>
       </div>
     </header>
     ${notice ? `<div class="notice" role="status">${notice}</div>` : ""}
-    <main>${content}</main>
+    <main id="main-content">${content}</main>
   </div>
 `;
 
@@ -110,7 +112,7 @@ const renderHome = (): string => {
         <p class="hero__subtitle">同一个点赞需求，五种流派，五种评价标准。最后让故障决定谁说了算。</p>
         <div class="hero__actions">
           <button class="primary-button" data-action="start" data-testid="home-start">开始一局</button>
-          ${run ? `<button class="secondary-button" data-action="resume">继续 ${factionById(run.factionId).name}</button>` : ""}
+          ${run ? `<button class="secondary-button" data-action="resume" data-testid="resume-run">继续 ${factionById(run.factionId).name}</button>` : ""}
         </div>
       </div>
       <div class="hero__console" aria-label="当前实验状态">
@@ -222,6 +224,8 @@ const renderReviewPanel = (activeRun: GameRun): string => {
   const check = checkForIncident(activeRun, incident.id);
   const isExcluded = activeRun.excludedFromCourse.includes(incident.id);
   const finalIncident = activeRun.incidentIndex === INCIDENTS.length - 1;
+  const academicVerdict = activeRun.factionId === "academic" ? judgeRun(activeRun) : undefined;
+  const academicScore = academicVerdict ? calculateFactionScore(activeRun, academicVerdict) : undefined;
   return `
     <div class="incident-card incident-card--review" data-testid="review-panel">
       <div class="incident-card__topline">
@@ -261,7 +265,13 @@ const renderReviewPanel = (activeRun: GameRun): string => {
           ${finalIncident ? "进入最终结算" : "接受结果，继续"}
         </button>
       </div>
-      ${isExcluded ? `<p class="scope-warning">课程成绩已忽略本题；业务裁决仍为 ${check.status}。</p>` : ""}
+      ${isExcluded && academicScore && academicVerdict ? `
+        <div class="scope-warning" data-testid="academic-scope-result">
+          <strong>${academicScore.value === 100 ? "恭喜！当前纳入考核的项目全部通过。" : `课程成绩现在是 ${academicScore.value}/${academicScore.maximum}。`}</strong>
+          <span>${academicScore.note}</span>
+          <b>业务验收：${academicVerdict.status}</b>
+        </div>
+      ` : ""}
     </div>
   `;
 };
@@ -369,7 +379,7 @@ const renderSettlement = (activeRun: GameRun): string => {
     <section class="settlement" data-testid="settlement">
       <header class="settlement__hero" style="--faction-accent:${faction.accent}">
         <p class="eyebrow">周目 ${activeRun.runNumber} / ${faction.name}</p>
-        <h1>最终业务裁决<br /><em class="${statusClass(verdict.status)}">${verdict.status}</em></h1>
+        <h1>最终业务裁决<br /><em class="settlement-status settlement-status--${verdict.status.toLowerCase()}" data-testid="settlement-verdict">${verdict.status}</em></h1>
         <p>${verdict.passed} 项通过，${verdict.failed} 项失败，${verdict.unknown} 项仍然不知道。</p>
       </header>
       <div class="settlement-ledgers">
@@ -454,11 +464,52 @@ const renderCareer = (): string => renderShell(`
       `}
     </section>
     <div class="settlement-actions">
-      <button class="primary-button" data-action="new-run">开始新周目</button>
+      <button class="primary-button" data-action="new-run" data-testid="career-new-run">开始新周目</button>
       <button class="secondary-button" data-action="home">返回首页</button>
     </div>
   </section>
 `);
+
+const renderRestartDialog = (): string => {
+  if (!restartRequested || !run || run.phase === "SETTLED") return "";
+  return `
+    <dialog class="restart-dialog" data-testid="restart-dialog" aria-labelledby="restart-dialog-title">
+      <p class="eyebrow">进行中的周目</p>
+      <h2 id="restart-dialog-title">这局还没结束</h2>
+      <p>现在开始新局，会放弃当前${factionById(run.factionId).name}的未完成进度。已经结算的历史周目不会受影响。</p>
+      <div class="restart-dialog__actions">
+        <button class="primary-button" data-action="cancel-restart" data-testid="cancel-restart">继续当前周目</button>
+        <button class="danger-button" data-action="confirm-restart" data-testid="confirm-restart">放弃并开始新局</button>
+      </div>
+    </dialog>
+  `;
+};
+
+const currentViewKey = (): string => {
+  if (screen !== "GAME" || !run) return screen;
+  if (run.phase === "SETTLED") return `SETTLEMENT:${run.runId}`;
+  return `INCIDENT:${run.runId}:${run.incidentIndex}`;
+};
+
+const focusViewStart = (): void => {
+  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  const heading = app.querySelector<HTMLElement>("main h1, main h2");
+  const target = heading ?? app.querySelector<HTMLElement>("main");
+  if (!target) return;
+  target.tabIndex = -1;
+  target.focus({ preventScroll: true });
+};
+
+const focusRestartDialog = (): void => {
+  const dialog = app.querySelector<HTMLDialogElement>("[data-testid='restart-dialog']");
+  if (!dialog) return;
+  if (!dialog.open) dialog.showModal();
+  app.querySelector<HTMLButtonElement>("[data-testid='cancel-restart']")?.focus();
+};
+
+const focusRestartTrigger = (): void => {
+  app.querySelector<HTMLButtonElement>(`button[data-action='${restartTriggerAction}']`)?.focus();
+};
 
 const render = (): void => {
   notice = notice.trim();
@@ -466,6 +517,10 @@ const render = (): void => {
   if (screen === "SELECT") app.innerHTML = renderFactionSelect();
   if (screen === "CAREER") app.innerHTML = renderCareer();
   if (screen === "GAME") app.innerHTML = run ? renderGame(run) : renderHome();
+  if (restartRequested) {
+    app.insertAdjacentHTML("beforeend", renderRestartDialog());
+    focusRestartDialog();
+  }
 };
 
 const persistRun = (): void => {
@@ -484,6 +539,8 @@ app.addEventListener("click", (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]");
   if (!button || button.disabled) return;
   const action = button.dataset.action;
+  const previousViewKey = currentViewKey();
+  let restoreRestartTrigger = false;
   notice = "";
   try {
     switch (action) {
@@ -492,6 +549,21 @@ app.addEventListener("click", (event) => {
         break;
       case "start":
       case "new-run":
+        if (run && run.phase !== "SETTLED") {
+          restartTriggerAction = action;
+          restartRequested = true;
+        } else {
+          clearActiveRun(window.localStorage);
+          run = undefined;
+          screen = "SELECT";
+        }
+        break;
+      case "cancel-restart":
+        restartRequested = false;
+        restoreRestartTrigger = true;
+        break;
+      case "confirm-restart":
+        restartRequested = false;
         clearActiveRun(window.localStorage);
         run = undefined;
         screen = "SELECT";
@@ -549,7 +621,19 @@ app.addEventListener("click", (event) => {
   } catch (error) {
     notice = error instanceof Error ? error.message : "操作没有完成。";
   }
+  const nextViewKey = currentViewKey();
   render();
+  if (restoreRestartTrigger) focusRestartTrigger();
+  else if (!restartRequested && previousViewKey !== nextViewKey) focusViewStart();
+});
+
+app.addEventListener("cancel", (event) => {
+  const dialog = (event.target as HTMLElement).closest<HTMLDialogElement>("[data-testid='restart-dialog']");
+  if (!dialog) return;
+  event.preventDefault();
+  restartRequested = false;
+  render();
+  focusRestartTrigger();
 });
 
 if (career.schemaVersion !== 1) career = initialCareer();

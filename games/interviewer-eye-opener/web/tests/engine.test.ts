@@ -6,6 +6,7 @@ import {
   applyDecision,
   completeNextCourse,
   createRun,
+  retryCurrentIncident,
   toggleAcademicScope,
 } from "../src/game/engine";
 import { judgeRun } from "../src/game/judge";
@@ -65,6 +66,29 @@ describe("game engine", () => {
 
     expect(score.value).toBe(100);
     expect(judgeRun(excluded).status).toBe("FAIL");
+  });
+
+  it("scores only executed academic checks and exposes zero coverage", () => {
+    let run = createRun("academic", 1);
+    run = applyDecision(run, "count-every-request");
+
+    const before = calculateFactionScore(run, judgeRun(run));
+    expect(before.value).toBe(0);
+    expect(before.note).toContain("有效考核 1 项");
+
+    run = toggleAcademicScope(run);
+    const after = calculateFactionScore(run, judgeRun(run));
+    expect(after.value).toBe(100);
+    expect(after.note).toContain("有效考核 0 项");
+    expect(after.note).toContain("已排除 1 项");
+    expect(judgeRun(run).status).toBe("FAIL");
+  });
+
+  it("uses neutral retry history for both passing and failing results", () => {
+    const reviewed = applyDecision(createRun("simple", 1), "db-unique");
+    const retried = retryCurrentIncident(reviewed);
+
+    expect(retried.history.at(-1)?.title).toBe("保留本次结果，重新选择");
   });
 
   it("keeps deterministic facts for the same decisions", () => {

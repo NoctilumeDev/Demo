@@ -334,7 +334,7 @@ export const retryCurrentIncident = (run: GameRun): GameRun => {
     phase: "DECISION",
     history: appendHistory(run, {
       kind: "SYSTEM",
-      title: "保留失败，重新选择",
+      title: "保留本次结果，重新选择",
       detail: "上一轮观察仍在事故记录里；最终裁判读取本场景最新一次重放。",
       incidentId: incident.id,
     }),
