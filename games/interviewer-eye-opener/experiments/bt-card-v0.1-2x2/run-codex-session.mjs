@@ -26,12 +26,12 @@ const validator = path.join(here, "validate-record.mjs");
 const sessionRoot = path.join(outputRoot, mode.toLowerCase(), sessionId);
 const rawRoot = path.join(sessionRoot, "raw");
 const emptyWorkdir = path.join(outputRoot, "empty-workdir");
-fs.mkdirSync(rawRoot, { recursive: true });
 fs.mkdirSync(emptyWorkdir, { recursive: true });
 
-if (mode === "FORMAL" && fs.existsSync(path.join(sessionRoot, "record.json"))) {
-  throw new Error(`Formal record already exists: ${sessionId}`);
+if (fs.existsSync(sessionRoot) && fs.readdirSync(sessionRoot).length > 0) {
+  throw new Error(`Session directory is not empty; refusing to overwrite evidence: ${sessionRoot}`);
 }
+fs.mkdirSync(rawRoot, { recursive: true });
 
 const sha256 = (value) => crypto.createHash("sha256").update(value, "utf8").digest("hex");
 const normalize = (value) => value.replace(/\r\n/g, "\n");
@@ -94,6 +94,8 @@ const runTurn = (prompt, schemaPath, label) => {
     input: prompt,
     encoding: "utf8",
     maxBuffer: 20 * 1024 * 1024,
+    timeout: 180_000,
+    killSignal: "SIGTERM",
     env: {
       ...process.env,
       HTTP_PROXY: "http://127.0.0.1:7897",
@@ -103,6 +105,7 @@ const runTurn = (prompt, schemaPath, label) => {
   });
   fs.writeFileSync(eventsPath, normalize(result.stdout ?? ""), "utf8");
   fs.writeFileSync(stderrPath, normalize(result.stderr ?? ""), "utf8");
+  if (result.error?.code === "ETIMEDOUT") throw new Error(`${label}: codex turn exceeded 180 seconds; evidence preserved`);
   if (result.status !== 0) throw new Error(`${label}: codex exit ${result.status}; see ${stderrPath}`);
 
   const events = parseJsonLines(result.stdout ?? "");

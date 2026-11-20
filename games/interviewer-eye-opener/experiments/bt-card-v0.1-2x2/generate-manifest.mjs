@@ -98,7 +98,7 @@ for (const [participantIndex, participant] of participants.entries()) {
 }
 
 const manifest = {
-  experimentId: "BT-CARD-v0.1-2x2",
+  experimentId: "BT-CARD-v0.1-2x2-r2",
   generatedAt: new Date().toISOString(),
   sourceCommit,
   questionVersion: ASSESSMENT_VERSION,

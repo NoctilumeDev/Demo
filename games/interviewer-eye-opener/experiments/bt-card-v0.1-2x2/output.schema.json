@@ -19,7 +19,7 @@
     "errors"
   ],
   "properties": {
-    "experimentId": { "const": "BT-CARD-v0.1-2x2" },
+    "experimentId": { "const": "BT-CARD-v0.1-2x2-r2" },
     "sessionId": { "type": "string", "minLength": 1 },
     "status": { "enum": ["PILOT", "FORMAL", "FAILED", "NOT_RUN"] },
     "model": {

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -18,10 +19,27 @@ if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 3) throw 
 const manifest = JSON.parse(fs.readFileSync(path.join(generatedRoot, "manifest.json"), "utf8"));
 const queue = manifest.sessions.filter((session) => session.provider === "codex" && cells.has(session.condition));
 const runner = path.join(here, "run-codex-session.mjs");
+const validator = path.join(here, "validate-record.mjs");
 const results = [];
 let cursor = 0;
 
 const runOne = (session) => new Promise((resolve) => {
+  const existingRecord = path.join(outputRoot, "formal", session.sessionId, "record.json");
+  if (fs.existsSync(existingRecord)) {
+    const validation = spawnSync(process.execPath, [validator, existingRecord, path.join(generatedRoot, "manifest.json")], { encoding: "utf8" });
+    if (validation.status === 0) {
+      const result = { sessionId: session.sessionId, model: session.requestedModel, condition: session.condition, exitCode: 0, skippedQualified: true };
+      results.push(result);
+      console.log(`session-skip-qualified=${session.sessionId}`);
+      resolve(result);
+      return;
+    }
+    const result = { sessionId: session.sessionId, model: session.requestedModel, condition: session.condition, exitCode: 1, invalidExistingRecord: true };
+    results.push(result);
+    console.error(`session-invalid-existing=${session.sessionId}`);
+    resolve(result);
+    return;
+  }
   console.log(`session-start=${session.sessionId} model=${session.requestedModel} cell=${session.condition}`);
   const child = spawn(process.execPath, [runner, generatedRoot, outputRoot, session.sessionId, "FORMAL"], {
     cwd: path.resolve(here, "../../../.."),
